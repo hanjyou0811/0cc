@@ -25,5 +25,10 @@ assert 255 "254+1"
 assert 41 " 12 + 34 - 5"
 assert 0 " 255 - 255 "
 assert 255 " 0 + 255 "
+assert 0 " 0 * 1"
+assert 5 "15 / 3"
+assert 7 "1 + 2 * 3"
+assert 18 "(2+4) * (4 - 1)"
+assert 255 "2 * 128 - 1"
 
 echo OK
