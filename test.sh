@@ -9,9 +9,9 @@ assert() {
   actual="$?"
 
   if [ "$actual" = "$expected" ]; then
-    echo "$input => $actual"
+    echo "'$input' :=> $actual"
   else
-    echo "$input => $expected expected, but got $actual"
+    echo "'$input' :=> $expected expected, but got $actual"
     exit 1
   fi
 }
@@ -35,5 +35,13 @@ assert 15 '5*(9-6)'
 assert 4 '(3+5)/2'
 assert 0 '-12 + 12'
 assert 10 '-10 + 20'
+assert 1 '0 == 0'
+assert 0 '0 == 1'
+assert 1 '0 != 1'
+assert 0 '0 != 0'
+assert 0 '0 < 0'
+assert 1 '0 >= 0'
+assert 0 '(1 + 3) > (2 * 6)'
+assert 1 '255 >= (254 + 1)'
 
 echo OK
