@@ -17,9 +17,11 @@ Node *new_node_num(int val) {
         return node;
 }
 
-void program() {
+void program() {	
 	int i = 0;
-	while(!at_eof()) code[i++] = stmt();
+	while(!at_eof()) {
+		code[i++] = stmt();
+	}
 	code[i] = NULL;
 }
 
@@ -48,6 +50,7 @@ Node *equality() {
                 else return node;
         }
 }
+
 
 Node *relational() {
         Node *node = add();
@@ -111,6 +114,7 @@ void error(char *fmt, ...) {
         va_start(ap, fmt);
         vfprintf(stderr, fmt, ap);
         fprintf(stderr, "\n");
+	va_end(ap);
         exit(1);
 }
 
@@ -124,6 +128,7 @@ void error_at(char *loc, char *fmt, ...) {
         fprintf(stderr, "^ ");
         vfprintf(stderr, fmt, ap);
         fprintf(stderr, "\n");
+	va_end(ap);
         exit(1);
 }
 
@@ -169,10 +174,10 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
         return tok;
 }
 
-Token *tokenize(char *p) {
-        Token head;
-        head.next = NULL;
-        Token *cur = &head;
+void tokenize(char *p) {
+       	Token head;
+	head.next = NULL;
+	Token *cur = &head;
         while (*p && *p != ';') {
 		if (isspace(*p)) {
                         p++;
@@ -221,6 +226,6 @@ Token *tokenize(char *p) {
                 error_at(p, "トークナイズできません");
         }
 	if(*p != ';') error_at(p, "不正な終わり方です。");
-        new_token(TK_EOF, cur, p);
-        return head.next;
+        new_token(TK_EOF, cur, p++);
+	token = head.next;
 }

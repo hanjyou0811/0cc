@@ -52,7 +52,7 @@ Token *consume_ident();
 void expect(char op);
 int expect_number();
 bool at_eof();
-Token *tokenize(char *p);
+void tokenize(char *p);
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
 void program();
@@ -70,5 +70,7 @@ void gen(Node *node);
 extern Token *token;
 extern char *user_input;
 extern Node *code[100];
+
+int println(const char *fmt, ...);
 
 #endif

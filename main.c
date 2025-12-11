@@ -8,18 +8,27 @@ int main(int argc, char **argv){
                 fprintf(stderr, "引数の個数が正しくありません。\n");
                 return 1;
         }
-
+	
         user_input = argv[1];
-        token = tokenize(argv[1]);
-        program();
+        
+	tokenize(argv[1]);
+	program();
 
-        printf(".intel_syntax noprefix\n");
-        printf(".globl main\n");
-        printf("main:\n");
+        println(".intel_syntax noprefix");
+        println(".globl main");
+        println("main:");
+	
+        println("	push rbp");
+	println("	mov rbp, rsp");
+	println("	sub rsp, 208");
+	
+	for (int i=0; code[i]; i++) {
+		gen(code[i]);
+		println("	pop rax");
+	}
 
-        gen(code[0]);
-
-        printf("        pop rax\n");
-        printf("        ret\n");
+        println("	mov rsp, rbp");
+	println("	pop rbp");
+	println("	ret");
         return 0;
 }
