@@ -32,8 +32,8 @@ void gen(Node *node) {
 	gen(node->lhs);
 	gen(node->rhs);
 
-        println("        pop rdi\n");
-        println("        pop rax\n");
+        println("        pop rdi");
+        println("        pop rax");
 
         switch (node->kind) {
         case ND_ADD:

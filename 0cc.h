@@ -10,6 +10,7 @@
 
 typedef enum {
         TK_RESERVED,
+	TK_RETURN,
         TK_IDENT,
 	TK_NUM,
         TK_EOF,
@@ -34,7 +35,7 @@ typedef enum {
         ND_LST,         // <
         ND_LSE,         // <=
         ND_LVAR, 	// Local var
-	
+	ND_RETURN,
 }       NodeKind;
 typedef struct Node Node;
 struct Node {
@@ -42,6 +43,13 @@ struct Node {
         Node *lhs;      //left
         Node *rhs;      //right
         int val;        //kind == ND_NUM
+	int offset;
+};
+typedef struct LVar LVar;
+struct LVar {
+	LVar *next;
+	char *name;
+	int len;
 	int offset;
 };
 
@@ -65,12 +73,17 @@ Node *add();
 Node *mul();
 Node *unary();
 Node *primary();
+LVar *find_lvar(Token *tok);
+
 void gen(Node *node);
 
 extern Token *token;
 extern char *user_input;
 extern Node *code[100];
+extern LVar *locals;
 
+// utils.c
 int println(const char *fmt, ...);
+int is_alnum(char c);
 
 #endif

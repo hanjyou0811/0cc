@@ -26,8 +26,10 @@ void program() {
 }
 
 Node *stmt() {
-	Node *node = expr();
-	consume(";");
+	Node *node;
+	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
+	else node = expr();
+	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
 	return node;
 }
 
@@ -97,16 +99,35 @@ Node *primary() {
                 consume(")");
         }
 	Token *tok = consume_ident();
+	
 	if (tok) {
 		Node *node = calloc(1, sizeof(Node));
 		node->kind = ND_LVAR;
-		node->offset = (tok->str[0] - 'a' + 1) * 8;
+		LVar *lvar = find_lvar(tok);
+		if (lvar) {
+			node->offset = lvar->offset;
+		} else {
+			lvar = calloc(1, sizeof(LVar));
+			lvar->next = locals;
+			lvar->name = tok->str;
+			lvar->len = tok->len;
+			lvar->offset = locals->offset + 8;
+			node->offset = lvar->offset;
+			locals = lvar;
+		}
 		return node;
 	}
 	else {
                 node = new_node_num(expect_number());
         }
         return node;
+}
+
+LVar *find_lvar(Token *tok) {
+	for (LVar *var = locals; var; var = var->next) {
+		if (var->len == tok->len && !memcmp(tok->str, var->name, var->len)) return var;
+	}
+	return NULL;
 }
 
 void error(char *fmt, ...) {
@@ -178,15 +199,26 @@ void tokenize(char *p) {
        	Token head;
 	head.next = NULL;
 	Token *cur = &head;
-        while (*p && *p != ';') {
+        while (*p) {
 		if (isspace(*p)) {
                         p++;
                         continue;
                 }
 		
+		if (!strncmp(p, "return", 6) && !is_alnum(p[6])) {
+			cur = new_token(TK_RETURN, cur, p);
+			cur->len = 6;
+			p += 6;
+			continue;
+		}
 		if ('a' <= *p && *p <= 'z') {
-			cur = new_token(TK_IDENT, cur, p++);
-			cur->len = 1;
+			int i = 0;
+			while(isalnum(p[i])) {
+				i++;
+			}
+			cur = new_token(TK_IDENT, cur, p);
+			cur->len = i;
+			p = p + i;
 			continue;
 		}
                 if (*p == '(' || *p == ')') {
@@ -215,6 +247,11 @@ void tokenize(char *p) {
 			cur->len = 1;
 			continue;
 		}
+		if (*p == ';') {
+			cur = new_token(TK_RESERVED, cur, p++);
+			cur->len = 1;
+			continue;
+		}
                 if (isdigit(*p)) {
                         cur = new_token(TK_NUM, cur, p);
                         cur->val = strtol(p, &p, 10);
@@ -225,7 +262,6 @@ void tokenize(char *p) {
 		
                 error_at(p, "トークナイズできません");
         }
-	if(*p != ';') error_at(p, "不正な終わり方です。");
         new_token(TK_EOF, cur, p++);
 	token = head.next;
 }
