@@ -27,7 +27,7 @@ void program() {
 
 Node *stmt() {
 	Node *node;
-	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
+	if(consume_kind(TK_RETURN)) node = new_node(ND_RETURN, expr(), NULL);
 	else node = expr();
 	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
 	return node;
@@ -94,13 +94,15 @@ Node *unary() {
 
 Node *primary() {
         Node *node;
-        if(consume("(")) {
+	if(consume("(")) {
                 node = expr();
-                consume(")");
+                if (!consume(")")) error_at(token->str, "')'で閉じてください");
+		return node;
         }
 	Token *tok = consume_ident();
-	
 	if (tok) {
+		if(tok->kind != TK_IDENT) 
+			error_at(token->str, "変数じゃないです");
 		Node *node = calloc(1, sizeof(Node));
 		node->kind = ND_LVAR;
 		LVar *lvar = find_lvar(tok);
@@ -118,7 +120,7 @@ Node *primary() {
 		return node;
 	}
 	else {
-                node = new_node_num(expect_number());
+		node = new_node_num(expect_number());
         }
         return node;
 }
@@ -153,13 +155,26 @@ void error_at(char *loc, char *fmt, ...) {
         exit(1);
 }
 
+// consume() 
+// 引数にop と TokenKindを渡してもいい？
 bool consume(char *op) {
-        if (token->kind != TK_RESERVED ||
+	// 1.tokenが予約語じゃない
+	// 2.len(op) とlen(token->str)の長さが違う
+	// 3.token->str とopが違う
+        if (token->kind != TK_RESERVED || 
                 strlen(op) != token->len ||
                 memcmp(token->str, op, token->len))
                 return false;
         token = token->next;
         return true;
+}
+
+bool consume_kind(TokenKind tk)
+{
+	//token->kind がtkと違う
+	if(token->kind != tk) return false;
+	token = token->next;
+	return true;
 }
 
 Token *consume_ident() {
@@ -176,7 +191,7 @@ void expect(char op) {
 }
 
 int expect_number() {
-        if (token->kind != TK_NUM) \
+        if (token->kind != TK_NUM)
                 error_at(token->str, "数ではありません");
         int val = token->val;
         token = token->next;
@@ -204,8 +219,7 @@ void tokenize(char *p) {
                         p++;
                         continue;
                 }
-		
-		if (!strncmp(p, "return", 6) && !is_alnum(p[6])) {
+		if (!memcmp(p, "return", 6) && !is_alnum(p[6])) {
 			cur = new_token(TK_RETURN, cur, p);
 			cur->len = 6;
 			p += 6;

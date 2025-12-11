@@ -56,6 +56,7 @@ struct LVar {
 void error(char *fmt, ...);
 void error_at(char *loc, char *fmt, ...);
 bool consume(char *op);
+bool consume_kind(TokenKind tk);
 Token *consume_ident();
 void expect(char op);
 int expect_number();
