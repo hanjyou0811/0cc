@@ -9,6 +9,14 @@ void gen_lval(Node *node) {
 }
 
 void gen(Node *node) {
+	if(node->kind == ND_RETURN) {
+		gen(node->lhs);
+		println("	pop rax");
+		println("	mov rsp, rbp");
+		println("	pop rbp");
+		println("	ret");
+		return ;
+	}
 	switch (node->kind) {
 	case ND_NUM:
 		println("	push %d", node->val);

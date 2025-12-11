@@ -13,7 +13,7 @@ int main(int argc, char **argv){
         user_input = argv[1];
         
 	tokenize(argv[1]);
-	locals = calloc(1, sizeof(LVar));
+	locals = NULL;
 	program();
 
         println(".intel_syntax noprefix");
