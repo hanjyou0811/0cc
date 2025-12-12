@@ -17,3 +17,13 @@ int is_alnum(char c)
 		('0' <= c && c <= '9') ||
 		(c == '_');
 }
+
+int match_token(char *str, char *tgt)
+{	
+	int size1 = strlen(str), size2 = strlen(tgt);
+	if (size1 < size2) return false;
+	if(!memcmp(str, tgt, size2) && !is_alnum(str[size2])) {
+		return true;
+	}
+	return false;
+}

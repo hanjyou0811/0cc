@@ -17,6 +17,25 @@ Node *new_node_num(int val) {
         return node;
 }
 
+Node *new_node_if(Node* cond, Node *then, Node *els) 
+{
+	Node *node = calloc(1, sizeof(Node));
+	node->kind = ND_IF;
+	node->cond = cond;
+	node->then = then;
+	node->els = els;
+	return node;
+}
+
+Node *new_node_while(Node* cond, Node *body) 
+{
+	Node *node = calloc(1, sizeof(Node));
+	node->kind = ND_WHILE;
+	node->cond = cond;
+	node->then = body;
+	return node;
+}
+
 void program() {	
 	int i = 0;
 	while(!at_eof()) {
@@ -27,9 +46,52 @@ void program() {
 
 Node *stmt() {
 	Node *node;
-	if(consume_kind(TK_RETURN)) node = new_node(ND_RETURN, expr(), NULL);
+	
+	if (consume("if")) {
+		if (!consume("(")) error_at(token->str, "'('ではじめてください");
+		Node *cond = expr();
+		if (!consume(")")) error_at(token->str, "')'でとじてください");
+		Node *then = stmt();
+		Node *els = NULL;
+		if (consume("else")) {
+			els = stmt();
+		}
+		node = new_node_if(cond, then, els);
+		return node;
+	}
+	if (consume("while")) {
+		if (!consume("(")) error_at(token->str, "'('ではじめてください");
+		Node *cond = expr();
+		if (!consume(")")) error_at(token->str, "')'でとじてください");
+		Node *then = stmt();
+		node = new_node_while(cond, then);
+		return node;
+	}
+	if (consume("for")) {
+		node = new_node(ND_FOR, NULL, NULL);
+		if (!consume("(")) error_at(token->str, "'('ではじめてください");
+		// init
+		if (!consume(";")) {
+			node->init = expr();
+			if(!consume(";")) error_at(token->str, "初期化式を書いてください");
+		}
+		// cond
+		if (!consume(";")) {
+			node->cond = expr();
+			if(!consume(";")) error_at(token->str, "条件式を書いてください");
+		}
+		// inc
+		if (!consume(")")) {
+			node->inc = expr();
+			if(!consume(")")) error_at(token->str, "')'でとじてください");
+		}
+		node->body = stmt();
+		return node;
+	}
+	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
 	else node = expr();
 	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
+	
 	return node;
 }
 
@@ -54,7 +116,6 @@ Node *equality() {
                 else return node;
         }
 }
-
 
 Node *relational() {
         Node *node = add();
@@ -222,10 +283,34 @@ void tokenize(char *p) {
                         p++;
                         continue;
                 }
-		if (!memcmp(p, "return", 6) && !is_alnum(p[6])) {
-			cur = new_token(TK_RETURN, cur, p);
+		if (match_token(p, "return")) {
+			cur = new_token(TK_RESERVED, cur, p);
 			cur->len = 6;
 			p += 6;
+			continue;
+		}
+		if (match_token(p, "if")) {
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 2;
+			p += 2;
+			continue;
+		}
+		if (match_token(p, "while")) {
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 5;
+			p += 5;
+			continue;
+		}
+		if (match_token(p, "for")) {
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 3;
+			p += 3;
+			continue;
+		}
+		if (match_token(p, "else")) {
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 4;
+			p += 4;
 			continue;
 		}
 		if (*p == ',') {
