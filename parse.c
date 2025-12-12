@@ -34,7 +34,9 @@ Node *stmt() {
 }
 
 Node *expr() {
-        return assign();
+	Node *node = assign();
+	if(consume(",")) node = new_node(ND_COMMA, node, expr());
+        return node;
 }
 
 Node *assign() {
@@ -187,13 +189,13 @@ Token *consume_ident() {
 
 void expect(char op) {
         if (token->kind != TK_RESERVED || token->str[0] != op)
-                error_at(token->str, "'%c'ではありません", op);
+                error_at(token->str, "'%c'が続くべきです。", op);
         token = token->next;
 }
 
 int expect_number() {
         if (token->kind != TK_NUM)
-                error_at(token->str, "数ではありません");
+                error_at(token->str, "数が続くべきです。");
         int val = token->val;
         token = token->next;
         return val;
@@ -224,6 +226,11 @@ void tokenize(char *p) {
 			cur = new_token(TK_RETURN, cur, p);
 			cur->len = 6;
 			p += 6;
+			continue;
+		}
+		if (*p == ',') {
+			cur = new_token(TK_RESERVED, cur, p++);
+			cur->len = 1;
 			continue;
 		}
 		if ('a' <= *p && *p <= 'z') {
@@ -262,7 +269,7 @@ void tokenize(char *p) {
 			cur->len = 1;
 			continue;
 		}
-		if (*p == ';') {
+		if (*p == ';' || *p == ',') {
 			cur = new_token(TK_RESERVED, cur, p++);
 			cur->len = 1;
 			continue;

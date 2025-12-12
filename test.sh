@@ -46,6 +46,6 @@ assert 1 '255 >= (254 + 1);'
 assert 3 'a = 3; return a;'
 assert 7 'a=1; b=2; c=3; return a + b * c;'
 assert 10 'a = 3; b = 2; return (a + 2) * b;'
-
+assert 21 'a = 3, b = 7; return (a * b);'
 
 echo OK
