@@ -35,7 +35,8 @@ typedef enum {
         ND_LST,         // <
         ND_LSE,         // <=
         ND_LVAR, 	// Local var
-	ND_RETURN,
+	ND_RETURN,	// return
+	ND_COMMA	// ','
 }       NodeKind;
 typedef struct Node Node;
 struct Node {
