@@ -47,5 +47,13 @@ assert 3 'a = 3; return a;'
 assert 7 'a=1; b=2; c=3; return a + b * c;'
 assert 10 'a = 3; b = 2; return (a + 2) * b;'
 assert 21 'a = 3, b = 7; return (a * b);'
+assert 1 'if (1) 1;'
+assert 42 'if (0) 1; else return (42);'
+assert 1 'a = 1, b = 0; if(a > b) return 1;else return 42;'
+assert 42 'if(0) 1; else if(0) 1; else if (0) 1; if(1) 42;' 
+assert 1 'if(0) 42; else if(0) 42; else if (0) 42; else 1;'
+assert 42 'if(0) 1; else if(1) 42; else if (0) 1; else 1;'
+assert 1 'if(1) if(1) if(1) if(1) if(1) 1;'
+assert 0 'if(1) if(1) if(1) if(1) if(0) 1;else 0;'
 
 echo OK
