@@ -97,7 +97,7 @@ extern Token *token;
 extern char *user_input;
 extern Node *code[100];
 extern LVar *locals;
-extern int cnt_if;
+extern int lavel_id;
 
 // utils.c
 int println(const char *fmt, ...);

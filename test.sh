@@ -55,5 +55,10 @@ assert 1 'if(0) 42; else if(0) 42; else if (0) 42; else 1;'
 assert 42 'if(0) 1; else if(1) 42; else if (0) 1; else 1;'
 assert 1 'if(1) if(1) if(1) if(1) if(1) 1;'
 assert 0 'if(1) if(1) if(1) if(1) if(0) 1;else 0;'
+assert 42 'while(0) 1; 42;'
+assert 55 ' ret = 0;for(a=1;a<11;a = a + 1) ret = ret + a; return ret;'
+assert 10 ' ret = 0; for(;ret < 10;ret = ret + 1) ret; return ret;'
+assert 30 ' ret = 0; for(a = 1; a< 11; a = a + 1) if((a - (a / 2) * 2) == 0) ret = ret + a; return ret;'
+assert 35 ' ret = 0; for(a = 1; a< 11; a = a + 1) if((a - (a / 2) * 2) == 0) ret = ret + a; else ret = ret + 1;return ret;'
 
 echo OK

@@ -9,12 +9,58 @@ void gen_lval(Node *node) {
 }
 
 void gen(Node *node) {
+	if(!node) return ;
 	if(node->kind == ND_RETURN) {
 		gen(node->lhs);
 		println("	pop rax");
 		println("	mov rsp, rbp");
 		println("	pop rbp");
 		println("	ret");
+		return ;
+	}
+	if(node->kind == ND_IF) {
+		int id = lavel_id++;
+		gen(node->cond);
+		println("	pop rax");
+		println("	cmp rax, 0");
+		if(node->els) {
+			println("	je .Lelse%03d", id);
+		} else 
+			println("	je .Lend%03d", id);
+		gen(node->then);
+		if(node->els)
+		{
+			println("	jmp .Lend%03d", id);
+			println(".Lelse%03d:", id);
+			gen(node->els);
+		}
+		println(".Lend%03d:", id);
+		return ;
+	}
+	if(node->kind == ND_WHILE) {
+		int id = lavel_id++;
+		println(".Lbegin%03d:", id);
+		gen(node->cond);
+		println("	pop rax");
+		println("	cmp rax, 0");
+		println("	je .Lend%03d", id);
+		gen(node->then);
+		println("	jmp .Lbegin%03d", id);
+		println(".Lend%03d:", id);
+		return ;
+	}
+	if(node->kind == ND_FOR) {
+		int id = lavel_id++;
+		gen(node->init);
+		println(".Lbegin%03d:", id);
+		gen(node->cond);
+		println("	pop rax");
+		println("	cmp rax, 0");
+		println("	je .Lend%03d", id);
+		gen(node->body);
+		gen(node->inc);
+		println("	jmp .Lbegin%03d", id);
+		println(".Lend%03d:", id);
 		return ;
 	}
 	switch (node->kind) {
