@@ -88,6 +88,15 @@ Node *stmt() {
 		node->body = stmt();
 		return node;
 	}
+	if (consume("{")) {
+		Node *block = new_node(ND_BLOCK, NULL, NULL);
+		int i = 0;
+		while (!consume("}")) {
+			block->stmts[i++] = stmt();		
+		}
+		block->stmts[i] = NULL;
+		return block;
+	}
 	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
 	else node = expr();
 	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
@@ -355,6 +364,11 @@ void tokenize(char *p) {
 			continue;
 		}
 		if (*p == ';' || *p == ',') {
+			cur = new_token(TK_RESERVED, cur, p++);
+			cur->len = 1;
+			continue;
+		}
+		if (*p == '{' || *p == '}') {
 			cur = new_token(TK_RESERVED, cur, p++);
 			cur->len = 1;
 			continue;

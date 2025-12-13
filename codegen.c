@@ -63,6 +63,18 @@ void gen(Node *node) {
 		println(".Lend%03d:", id);
 		return ;
 	}
+	if(node->kind == ND_BLOCK) {
+		int j = 0;
+		for(int i=0;node->stmts[i];i++) {
+			j++;
+		}
+		for(int i=0;i < j-1;i++) {
+			gen(node->stmts[i]);
+			println("	pop rax");
+		}
+		gen(node->stmts[j-1]);
+		return ;
+	}
 	switch (node->kind) {
 	case ND_NUM:
 		println("	push %d", node->val);

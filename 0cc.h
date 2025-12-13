@@ -39,8 +39,8 @@ typedef enum {
         ND_IF,		// if
         ND_WHILE,	// while
         ND_FOR,		// for
-	ND_COMMA	// ','
-
+	ND_COMMA,	// ','
+	ND_BLOCK
 }       NodeKind;
 typedef struct Node Node;
 struct Node {
@@ -56,7 +56,7 @@ struct Node {
         Node *inc;      //increment (for)
 
         Node *body;     //body (while / for)
-
+	Node *stmts[100];
         int val;        //kind == ND_NUM
 	int offset;
 };
