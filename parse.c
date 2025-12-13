@@ -175,8 +175,16 @@ Node *primary() {
 	if (tok) {
 		if(tok->kind != TK_IDENT) 
 			error_at(token->str, "変数じゃないです");
+		
 		Node *node = calloc(1, sizeof(Node));
-		node->kind = ND_LVAR;
+		if(consume("(")) {
+			node->kind = ND_FUNC;
+			node->func_name = calloc(tok->len, sizeof(char));
+			strncpy(node->func_name, tok->str, tok->len);
+			if(!consume(")")) error_at(token->str, "')'で閉じてください");
+			return node;
+		}
+		else node->kind = ND_LVAR;
 		LVar *lvar = find_lvar(tok);
 		if (lvar) {
 			node->offset = lvar->offset;

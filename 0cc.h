@@ -40,7 +40,8 @@ typedef enum {
         ND_WHILE,	// while
         ND_FOR,		// for
 	ND_COMMA,	// ','
-	ND_BLOCK
+	ND_BLOCK,	// {}
+	ND_FUNC
 }       NodeKind;
 typedef struct Node Node;
 struct Node {
@@ -59,6 +60,7 @@ struct Node {
 	Node *stmts[100];
         int val;        //kind == ND_NUM
 	int offset;
+	char *func_name;
 };
 typedef struct LVar LVar;
 struct LVar {

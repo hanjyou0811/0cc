@@ -75,6 +75,10 @@ void gen(Node *node) {
 		gen(node->stmts[j-1]);
 		return ;
 	}
+	if(node->kind == ND_FUNC) {
+		println("	call %s", node->func_name);
+		return ;	
+	}
 	switch (node->kind) {
 	case ND_NUM:
 		println("	push %d", node->val);

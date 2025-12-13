@@ -16,10 +16,15 @@ int main(int argc, char **argv){
 	tokenize(argv[1]);
 	locals = NULL;
 	program();
-
+	
         println(".intel_syntax noprefix");
         println(".globl main");
-        println("main:");
+        for (int i=0;code[i];i++){
+		if(code[i]->func_name) {
+			println(".extern %s", code[i]->func_name);
+		}
+	}
+	println("main:");
 	
         println("	push rbp");
 	println("	mov rbp, rsp");
