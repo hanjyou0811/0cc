@@ -179,9 +179,12 @@ Node *primary() {
 		Node *node = calloc(1, sizeof(Node));
 		if(consume("(")) {
 			node->kind = ND_FUNC;
-			node->func_name = calloc(tok->len, sizeof(char));
-			strncpy(node->func_name, tok->str, tok->len);
-			if(!consume(")")) error_at(token->str, "')'で閉じてください");
+			node->func_name = strndup(tok->str, tok->len);
+			if(consume(")")) return node;
+			for(int i=0;!consume(")");i++){
+				if(i > 0 && !consume(","))error_at(token->str, "','が必要です。");
+				node->args[i] = assign();
+			}
 			return node;
 		}
 		else node->kind = ND_LVAR;

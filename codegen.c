@@ -76,7 +76,17 @@ void gen(Node *node) {
 		return ;
 	}
 	if(node->kind == ND_FUNC) {
+		int argc = 0;
+		while(node->args[argc]) argc++;
+		if (argc > 6) error("引数が6こ以上です。");
+		for(int i = argc - 1; i >= 0; i--) {
+			gen(node->args[i]);
+		}
+		for(int i = 0;i < argc;i++){
+			println("	pop %s", arg_addr[i]);
+		}
 		println("	call %s", node->func_name);
+		println("	push rax");
 		return ;	
 	}
 	switch (node->kind) {
@@ -99,13 +109,14 @@ void gen(Node *node) {
 		println("	push rdi");
 		return ;
 	}
+
 	gen(node->lhs);
 	gen(node->rhs);
-
-        println("        pop rdi");
+        
+	println("        pop rdi");
         println("        pop rax");
-
         switch (node->kind) {
+	
         case ND_ADD:
                 println("        add rax, rdi");
                 break;

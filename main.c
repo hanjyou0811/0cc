@@ -4,6 +4,9 @@ char *user_input;
 Token *token;
 LVar *locals = NULL;
 int lavel_id = 0;
+const char *arg_addr[] = {
+        "rdi", "rsi", "rdx", "rcx", "r8", "r9"
+};
 
 int main(int argc, char **argv){
         if (argc != 2) {
