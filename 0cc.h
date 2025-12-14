@@ -57,7 +57,9 @@ struct Node {
         Node *inc;      //increment (for)
 
         Node *body;     //body (while / for)
-	Node *stmts[100];
+	Node *stmts[100];	// blcok
+	Node *args[100];	
+
         int val;        //kind == ND_NUM
 	int offset;
 	char *func_name;
@@ -100,10 +102,12 @@ extern char *user_input;
 extern Node *code[100];
 extern LVar *locals;
 extern int lavel_id;
+extern const char *arg_addr[];
 
 // utils.c
 int println(const char *fmt, ...);
 int is_alnum(char c);
 int match_token(char *src, char *tgt);
+char *strndup(const char *ptr, int len);
 
 #endif
