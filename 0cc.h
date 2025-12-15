@@ -41,8 +41,16 @@ typedef enum {
         ND_FOR,		// for
 	ND_COMMA,	// ','
 	ND_BLOCK,	// {}
-	ND_FUNC
+	ND_CALL,         // call function
+        ND_FUNC,
 }       NodeKind;
+typedef struct LVar LVar;
+struct LVar {
+	LVar *next;
+	char *name;
+	int len;
+	int offset;
+};
 typedef struct Node Node;
 struct Node {
         NodeKind kind;  //Node
@@ -58,18 +66,14 @@ struct Node {
 
         Node *body;     //body (while / for)
 	Node *stmts[100];	// blcok
-	Node *args[100];	
+	Node *call_args[100];
+
+        LVar *params[100];
 
         int val;        //kind == ND_NUM
 	int offset;
 	char *func_name;
-};
-typedef struct LVar LVar;
-struct LVar {
-	LVar *next;
-	char *name;
-	int len;
-	int offset;
+        int argc;
 };
 
 void error(char *fmt, ...);
@@ -77,6 +81,7 @@ void error_at(char *loc, char *fmt, ...);
 bool consume(char *op);
 bool consume_kind(TokenKind tk);
 Token *consume_ident();
+int consume_paramList(Node *node);
 void expect(char op);
 int expect_number();
 bool at_eof();
@@ -84,6 +89,8 @@ void tokenize(char *p);
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
 void program();
+Node *func();
+Node *block();
 Node *assign();
 Node *expr();
 Node *stmt();

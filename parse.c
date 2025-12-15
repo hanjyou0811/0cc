@@ -36,12 +36,39 @@ Node *new_node_while(Node* cond, Node *body)
 	return node;
 }
 
-void program() {	
+void program() {
 	int i = 0;
 	while(!at_eof()) {
-		code[i++] = stmt();
+		code[i++] = func();
 	}
 	code[i] = NULL;
+}
+
+Node *func() {
+	locals = NULL;
+    Token *tok = consume_ident();
+	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
+	Node *node = calloc(1, sizeof(Node));
+	node->kind = ND_FUNC;
+	node->func_name = strndup(tok->str, tok->len);
+	if(!consume("(")) 
+		error_at(token->str, "'('が来るべきです。");
+	if(!consume(")")) 
+		node->argc = consume_paramList(node);
+	node->body = block();
+	return node;
+}
+
+Node *block(){
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_BLOCK;
+	if(!consume("{")) error_at(token->str, "'{'が必要です。");
+    int i = 0;
+    while (!consume("}")) {
+        node->stmts[i++] = stmt();
+    }
+    node->stmts[i] = NULL;
+    return node;
 }
 
 Node *stmt() {
@@ -88,14 +115,8 @@ Node *stmt() {
 		node->body = stmt();
 		return node;
 	}
-	if (consume("{")) {
-		Node *block = new_node(ND_BLOCK, NULL, NULL);
-		int i = 0;
-		while (!consume("}")) {
-			block->stmts[i++] = stmt();		
-		}
-		block->stmts[i] = NULL;
-		return block;
+	if (token->str[0] == '{') {
+		return block();
 	}
 	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
 	else node = expr();
@@ -178,12 +199,12 @@ Node *primary() {
 		
 		Node *node = calloc(1, sizeof(Node));
 		if(consume("(")) {
-			node->kind = ND_FUNC;
+			node->kind = ND_CALL;
 			node->func_name = strndup(tok->str, tok->len);
 			if(consume(")")) return node;
 			for(int i=0;!consume(")");i++){
 				if(i > 0 && !consume(","))error_at(token->str, "','が必要です。");
-				node->args[i] = assign();
+				node->call_args[i] = assign();
 			}
 			return node;
 		}
@@ -266,6 +287,27 @@ Token *consume_ident() {
 	Token *ret = token;
 	token = token->next;
 	return ret;
+}
+
+int consume_paramList(Node *node) {
+    int i;
+	for (i = 0; !consume(")"); i++) {
+		if (i > 0 && !consume(",")) 
+			error_at(token->str, "','が必要です。");
+
+		Token *tok = consume_ident();
+		if (!tok)
+			error_at(token->str, "識別子が必要です。");
+
+		LVar *var = calloc(1, sizeof(LVar));
+		var->name = tok->str;
+		var->len  = tok->len;
+		var->offset = locals ? locals->offset + 8 : 8;
+		var->next = locals;
+		locals = var;
+		node->params[i] = var; 
+	}
+	return i;
 }
 
 void expect(char op) {

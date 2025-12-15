@@ -24,22 +24,16 @@ int main(int argc, char **argv){
         println(".globl main");
         for (int i=0;code[i];i++){
 		if(code[i]->func_name) {
-			println(".extern %s", code[i]->func_name);
+			if(strncmp(code[i]->func_name, "main", 4))
+				println(".extern %s", code[i]->func_name);
 		}
 	}
-	println("main:");
-	
-        println("	push rbp");
-	println("	mov rbp, rsp");
-	println("	sub rsp, 208");
-	
 	for (int i=0; code[i]; i++) {
 		gen(code[i]);
-		println("	pop rax");
 	}
 
-        println("	mov rsp, rbp");
-	println("	pop rbp");
-	println("	ret");
+    //     println("	mov rsp, rbp");
+	// println("	pop rbp");
+	// println("	ret");
         return 0;
 }

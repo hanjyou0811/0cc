@@ -27,3 +27,10 @@ int match_token(char *str, char *tgt)
 	}
 	return false;
 }
+
+char *strndup(const char *ptr, int len)
+{
+        char *ret = calloc(len + 1, sizeof(char));
+        memcpy(ret, ptr, len);
+	return ret;
+}

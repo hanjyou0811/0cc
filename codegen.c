@@ -75,19 +75,39 @@ void gen(Node *node) {
 		gen(node->stmts[j-1]);
 		return ;
 	}
-	if(node->kind == ND_FUNC) {
+	if(node->kind == ND_CALL) {
 		int argc = 0;
-		while(node->args[argc]) argc++;
+		while(node->call_args[argc]) argc++;
 		if (argc > 6) error("引数が6こ以上です。");
 		for(int i = argc - 1; i >= 0; i--) {
-			gen(node->args[i]);
+			gen(node->call_args[i]);
 		}
 		for(int i = 0;i < argc;i++){
 			println("	pop %s", arg_addr[i]);
 		}
 		println("	call %s", node->func_name);
 		println("	push rax");
+		// println("	ret");
 		return ;	
+	}
+	if (node->kind == ND_FUNC) {
+		println("%s:", node->func_name);
+		println("	push rbp");
+		println("	mov rbp, rsp");
+		println("	sub rsp, %d", 208);
+		for (int i = 0; i < node->argc; i++) {
+			println("	mov [rbp-%d], %s",
+					node->params[i]->offset,
+					arg_addr[i]);
+		}
+		gen(node->body);
+		if (strcmp(node->func_name, "main") == 0) {
+			println("    mov eax, 0");
+		}
+		println("	mov rsp, rbp");
+		println("	pop rbp");
+		println("	ret");
+		return;
 	}
 	switch (node->kind) {
 	case ND_NUM:
