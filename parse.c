@@ -380,9 +380,9 @@ void tokenize(char *p) {
 			cur->len = 1;
 			continue;
 		}
-		if ('a' <= *p && *p <= 'z') {
+		if ('a' <= *p && *p <= 'z' || (*p == '_')) {
 			int i = 0;
-			while(isalnum(p[i])) {
+			while(is_alnum(p[i])) {
 				i++;
 			}
 			cur = new_token(TK_IDENT, cur, p);
