@@ -109,6 +109,17 @@ void gen(Node *node) {
 		println("	ret");
 		return;
 	}
+	if(node->kind == ND_ADDR){
+		gen_lval(node->lhs);
+		return ;
+	}
+	if(node->kind == ND_DEREF){
+		gen(node->lhs);
+		println("	pop rax");
+		println("	mov rax, [rax]");
+		println("	push rax");
+		return;
+	}
 	switch (node->kind) {
 	case ND_NUM:
 		println("	push %d", node->val);

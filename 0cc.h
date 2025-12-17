@@ -41,8 +41,10 @@ typedef enum {
         ND_FOR,		// for
 	ND_COMMA,	// ','
 	ND_BLOCK,	// {}
-	ND_CALL,         // call function
-        ND_FUNC,
+	ND_CALL,        // call function
+        ND_FUNC,	// func def
+	ND_ADDR,	// &x
+	ND_DEREF	// *x
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {
