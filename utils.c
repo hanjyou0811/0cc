@@ -18,6 +18,10 @@ int is_alnum(char c)
 		(c == '_');
 }
 
+int is_type(char *ident){
+	return (!memcmp(ident, "int", 3));
+}
+
 int match_token(char *str, char *tgt)
 {	
 	int size1 = strlen(str), size2 = strlen(tgt);
@@ -34,3 +38,4 @@ char *strndup(const char *ptr, int len)
         memcpy(ret, ptr, len);
 	return ret;
 }
+

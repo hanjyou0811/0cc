@@ -14,6 +14,7 @@ typedef enum {
         TK_IDENT,
 	TK_NUM,
         TK_EOF,
+        TK_TYPE,
 }       TokenKind;
 typedef struct Token Token;
 struct Token {
@@ -44,7 +45,8 @@ typedef enum {
 	ND_CALL,        // call function
         ND_FUNC,	// func def
 	ND_ADDR,	// &x
-	ND_DEREF	// *x
+	ND_DEREF,	// *x
+        ND_DEF,         // def val
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {
@@ -92,6 +94,8 @@ Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
 void program();
 Node *func();
+Node *def_stmt();
+Node *decl();
 Node *block();
 Node *assign();
 Node *expr();
@@ -116,6 +120,7 @@ extern const char *arg_addr[];
 // utils.c
 int println(const char *fmt, ...);
 int is_alnum(char c);
+int is_type(char *ident);
 int match_token(char *src, char *tgt);
 char *strndup(const char *ptr, int len);
 

@@ -46,6 +46,9 @@ void program() {
 
 Node *func() {
 	locals = NULL;
+	if(!consume_kind(TK_TYPE)){
+		error_at(token->str, "型を書いてください。");
+	}
     Token *tok = consume_ident();
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	Node *node = calloc(1, sizeof(Node));
@@ -99,7 +102,8 @@ Node *stmt() {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		// init
 		if (!consume(";")) {
-			node->init = expr();
+			if(!consume_kind(TK_TYPE)) node->init = expr();
+			else node->init = def_stmt();
 			if(!consume(";")) error_at(token->str, "初期化式を書いてください");
 		}
 		// cond
@@ -119,16 +123,53 @@ Node *stmt() {
 		return block();
 	}
 	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
+	else if(consume_kind(TK_TYPE)) node = def_stmt();
 	else node = expr();
 	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
-	
+	return node;
+}
+
+Node *def_stmt(){
+	Node *node = decl();
+	while(consume(",")){
+		println("token->str %s", token->str);
+		node = new_node(ND_DEF, node, decl());
+	}
+	return node;
+}
+
+Node *decl(){
+	Node *node = calloc(1, sizeof(Node));
+	Token *tok = consume_ident();
+	if(!tok) error_at(token->str, "識別子が来るべきです。");
+	// if(!tok) error_at(token->str, "識別子が来るべきです。");
+	node->kind = ND_LVAR;
+	LVar *lvar = find_lvar(tok);
+	// if(tok->kind != TK_IDENT) error_at(tok->str, "識別子が来るべきです。");
+	if (lvar) {
+		error_at(tok->str, "既に定義されている変数です。");
+	} else {
+		lvar = calloc(1, sizeof(LVar));
+		lvar->next = locals;
+		lvar->name = tok->str;
+		lvar->len = tok->len;
+		if (locals) lvar->offset = locals->offset + 8;
+		else lvar->offset = 8;
+		node->offset = lvar->offset;
+		locals = lvar;
+	}
+	if(consume("=")){
+		node = new_node(ND_ASSIGN, node, expr());
+	}
 	return node;
 }
 
 Node *expr() {
 	Node *node = assign();
-	if(consume(",")) node = new_node(ND_COMMA, node, expr());
-        return node;
+	while (consume(",")) {
+		node = new_node(ND_COMMA, node, decl());
+	}
+    return node;
 }
 
 Node *assign() {
@@ -198,14 +239,13 @@ Node *primary() {
 	if (tok) {
 		if(tok->kind != TK_IDENT) 
 			error_at(token->str, "変数じゃないです");
-		
 		Node *node = calloc(1, sizeof(Node));
 		if(consume("(")) {
 			node->kind = ND_CALL;
 			node->func_name = strndup(tok->str, tok->len);
 			if(consume(")")) return node;
 			for(int i=0;!consume(")");i++){
-				if(i > 0 && !consume(","))error_at(token->str, "','が必要です。");
+				if(i > 0 && !consume(",")) error_at(token->str, "','が必要です。");
 				node->call_args[i] = assign();
 			}
 			return node;
@@ -215,21 +255,22 @@ Node *primary() {
 		if (lvar) {
 			node->offset = lvar->offset;
 		} else {
-			lvar = calloc(1, sizeof(LVar));
-			lvar->next = locals;
-			lvar->name = tok->str;
-			lvar->len = tok->len;
-			if (locals) lvar->offset = locals->offset + 8;
-			else lvar->offset = 8;
-			node->offset = lvar->offset;
-			locals = lvar;
+			error_at(tok->str, "定義されていない変数です。");
+			// lvar = calloc(1, sizeof(LVar));
+			// lvar->next = locals;
+			// lvar->name = tok->str;
+			// lvar->len = tok->len;
+			// if (locals) lvar->offset = locals->offset + 8;
+			// else lvar->offset = 8;
+			// node->offset = lvar->offset;
+			// locals = lvar;
 		}
 		return node;
 	}
 	else {
 		node = new_node_num(expect_number());
-        }
-        return node;
+    }
+    return node;
 }
 
 LVar *find_lvar(Token *tok) {
@@ -294,9 +335,10 @@ Token *consume_ident() {
 int consume_paramList(Node *node) {
     int i;
 	for (i = 0; !consume(")"); i++) {
-		if (i > 0 && !consume(",")) 
+		if (i > 0 && !consume(","))
 			error_at(token->str, "','が必要です。");
-
+		if(!consume_kind(TK_TYPE))
+			error_at(token->str, "型が必要です。");
 		Token *tok = consume_ident();
 		if (!tok)
 			error_at(token->str, "識別子が必要です。");
@@ -387,7 +429,9 @@ void tokenize(char *p) {
 			while(is_alnum(p[i])) {
 				i++;
 			}
-			cur = new_token(TK_IDENT, cur, p);
+			char *ident = strndup(p, i);
+			if(is_type(ident)) cur = new_token(TK_TYPE, cur, p);
+			else cur = new_token(TK_IDENT, cur, p);
 			cur->len = i;
 			p = p + i;
 			continue;
