@@ -65,13 +65,15 @@ Node *func() {
 Node *block(){
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_BLOCK;
+	LVar *saved = locals;
 	if(!consume("{")) error_at(token->str, "'{'が必要です。");
     int i = 0;
     while (!consume("}")) {
         node->stmts[i++] = stmt();
     }
     node->stmts[i] = NULL;
-    return node;
+	locals = saved;
+	return node;
 }
 
 Node *stmt() {
@@ -132,7 +134,6 @@ Node *stmt() {
 Node *def_stmt(){
 	Node *node = decl();
 	while(consume(",")){
-		println("token->str %s", token->str);
 		node = new_node(ND_DEF, node, decl());
 	}
 	return node;
@@ -142,10 +143,8 @@ Node *decl(){
 	Node *node = calloc(1, sizeof(Node));
 	Token *tok = consume_ident();
 	if(!tok) error_at(token->str, "識別子が来るべきです。");
-	// if(!tok) error_at(token->str, "識別子が来るべきです。");
 	node->kind = ND_LVAR;
 	LVar *lvar = find_lvar(tok);
-	// if(tok->kind != TK_IDENT) error_at(tok->str, "識別子が来るべきです。");
 	if (lvar) {
 		error_at(tok->str, "既に定義されている変数です。");
 	} else {
@@ -159,7 +158,7 @@ Node *decl(){
 		locals = lvar;
 	}
 	if(consume("=")){
-		node = new_node(ND_ASSIGN, node, expr());
+		node = new_node(ND_ASSIGN, node, assign());
 	}
 	return node;
 }
@@ -167,7 +166,7 @@ Node *decl(){
 Node *expr() {
 	Node *node = assign();
 	while (consume(",")) {
-		node = new_node(ND_COMMA, node, decl());
+		node = new_node(ND_COMMA, node, assign());
 	}
     return node;
 }
