@@ -23,7 +23,7 @@ int is_type(char *ident){
 }
 
 int match_token(char *str, char *tgt)
-{	
+{
 	int size1 = strlen(str), size2 = strlen(tgt);
 	if (size1 < size2) return false;
 	if(!memcmp(str, tgt, size2) && !is_alnum(str[size2])) {
@@ -39,3 +39,20 @@ char *strndup(const char *ptr, int len)
 	return ret;
 }
 
+char *strdup(const char *s)
+{
+    size_t len = strlen(s) + 1;
+    char *p = malloc(len);
+    if (!p) return NULL;
+    memcpy(p, s, len);
+    return p;
+}
+
+extern_funcs *add_extern_funcs(const char *funcname)
+{
+	extern_funcs *ptr = calloc(1, sizeof(extern_funcs));
+	ptr->func_name = strdup(funcname);
+	ptr->nex = funcs;
+	funcs = ptr;
+	return ptr;
+}

@@ -121,7 +121,7 @@ void gen(Node *node) {
 		}
 		gen(node->body);
 		if (strcmp(node->func_name, "main") == 0) {
-			println("    mov eax, 0");
+			println("	mov eax, 0");
 		}
 		println("	mov rsp, rbp");
 		println("	pop rbp");
@@ -143,39 +143,39 @@ void gen(Node *node) {
         
 	println("        pop rdi");
     println("        pop rax");
-        switch (node->kind) {
-        case ND_ADD:
-                println("        add rax, rdi");
-                break;
-        case ND_SUB:
-                println("        sub rax, rdi");
-                break;
-        case ND_MUL:
-                println("        imul rax, rdi");
-                break;
-        case ND_DIV:
-                println("        cqo");
-                println("        idiv rdi");
-                break;
-        case ND_EQL:
-                println("        cmp rax, rdi");
+	switch (node->kind) {
+	case ND_ADD:
+		println("        add rax, rdi");
+		break;
+	case ND_SUB:
+		println("        sub rax, rdi");
+		break;
+	case ND_MUL:
+		println("        imul rax, rdi");
+		break;
+	case ND_DIV:
+		println("        cqo");
+		println("        idiv rdi");
+		break;
+	case ND_EQL:
+		println("        cmp rax, rdi");
 		println("        sete al");
-                println("        movzb rax, al");
-                break;
-        case ND_NEQL:
-                println("        cmp rax, rdi");
-                println("        setne al");
-                println("        movzb rax, al");
-                break;
-        case ND_LST:
-                println("        cmp rax, rdi");
-                println("        setl al");
-                println("        movzb rax, al");
-                break;
-        case ND_LSE:
-                println("        cmp rax, rdi");
-                println("        setle al");
-                println("        movzb rax, al");
-        }
-        println("        push rax");
+		println("        movzb rax, al");
+		break;
+	case ND_NEQL:
+		println("        cmp rax, rdi");
+		println("        setne al");
+		println("        movzb rax, al");
+		break;
+	case ND_LST:
+		println("        cmp rax, rdi");
+		println("        setl al");
+		println("        movzb rax, al");
+		break;
+	case ND_LSE:
+		println("        cmp rax, rdi");
+		println("        setle al");
+		println("        movzb rax, al");
+	}
+	println("        push rax");
 }

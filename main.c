@@ -7,6 +7,7 @@ int lavel_id = 0;
 const char *arg_addr[] = {
         "rdi", "rsi", "rdx", "rcx", "r8", "r9"
 };
+extern_funcs *funcs = NULL;
 
 int main(int argc, char **argv){
 	if (argc != 2) {
@@ -22,11 +23,9 @@ int main(int argc, char **argv){
 	
 	println(".intel_syntax noprefix");
 	println(".globl main");
-	for (int i=0;code[i];i++){
-		if(code[i]->func_name) {
-			if(strncmp(code[i]->func_name, "main", 4))
-				println(".extern %s", code[i]->func_name);
-		}
+	while(funcs){
+		println(".extern %s", funcs->func_name);
+		funcs = funcs->nex;
 	}
 	for (int i=0; code[i]; i++) {
 		gen(code[i]);

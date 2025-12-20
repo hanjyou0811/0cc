@@ -266,6 +266,7 @@ Node *primary() {
 		if(consume("(")) {
 			node->kind = ND_CALL;
 			node->func_name = strndup(tok->str, tok->len);
+			add_extern_funcs(node->func_name);
 			if(consume(")")) return node;
 			for(int i=0;!consume(")");i++){
 				if(i > 0 && !consume(",")) error_at(token->str, "','が必要です。");

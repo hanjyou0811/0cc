@@ -132,6 +132,14 @@ extern LVar *locals;
 extern int lavel_id;
 extern const char *arg_addr[];
 
+typedef struct extern_funcs extern_funcs;
+struct extern_funcs {
+        char *func_name;
+        extern_funcs *nex;
+};
+extern extern_funcs *funcs;
+extern_funcs *add_extern_funcs(const char *funcname);
+
 // utils.c
 int println(const char *fmt, ...);
 int is_alnum(char c);
