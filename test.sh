@@ -65,5 +65,8 @@ assert 4   "int main(){{int a = 1; int b = 2; return a * ( b + b);}}"
 assert 1   "int main(){{{{{{{{{{return 1;}}}}}}}}}}"
 assert 6   "int calcmod(int x, int y) {return (x - (x / y) * y);} int main(){int x = 16; int y= 10; return calcmod(x, y);}"
 assert 3   "int main(){int x = 0, y = (x = 2) + 1;return y;}"
+assert 3   "int main(){int x = 3;int y = 5;int z = &y + 8;return *z;}"
+assert 10  "int main(){int x = 1;int *y = &x;*y=10;return x;}"
+assert 42  "int main(){int a0 = 0;int *a1 = &a0; int **a2 = &a1; int ***a3 = &a2; int ****a4 = &a3; int *****a5 = &a4; *****a5 = 42;return a0;}"
 
 echo OK

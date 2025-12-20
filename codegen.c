@@ -1,125 +1,21 @@
 #include "0cc.h"
 
 void gen_lval(Node *node) {
-	if (node->kind != ND_LVAR) error("代入の左辺値が変数ではありません");
-	
-	println("	mov rax, rbp");
-	println("	sub rax, %d", node->offset);
-	println("	push rax");
+	switch (node->kind) {
+	case ND_LVAR:
+		println("	mov rax, rbp");
+		println("	sub rax, %d", node->offset);
+		println("	push rax");
+		return ;
+	case ND_DEREF:
+		gen(node->lhs);
+		return ;
+	}
+	error("代入の左辺値が変数でもポインタでもありません。");
 }
 
 void gen(Node *node) {
 	if(!node) return ;
-	if(node->kind == ND_RETURN) {
-		gen(node->lhs);
-		println("	pop rax");
-		println("	mov rsp, rbp");
-		println("	pop rbp");
-		println("	ret");
-		return ;
-	}
-	if(node->kind == ND_IF) {
-		int id = lavel_id++;
-		gen(node->cond);
-		println("	pop rax");
-		println("	cmp rax, 0");
-		if(node->els) {
-			println("	je .Lelse%03d", id);
-		} else 
-			println("	je .Lend%03d", id);
-		gen(node->then);
-		if(node->els)
-		{
-			println("	jmp .Lend%03d", id);
-			println(".Lelse%03d:", id);
-			gen(node->els);
-		}
-		println(".Lend%03d:", id);
-		return ;
-	}
-	if(node->kind == ND_WHILE) {
-		int id = lavel_id++;
-		println(".Lbegin%03d:", id);
-		gen(node->cond);
-		println("	pop rax");
-		println("	cmp rax, 0");
-		println("	je .Lend%03d", id);
-		gen(node->then);
-		println("	jmp .Lbegin%03d", id);
-		println(".Lend%03d:", id);
-		return ;
-	}
-	if(node->kind == ND_FOR) {
-		int id = lavel_id++;
-		gen(node->init);
-		println(".Lbegin%03d:", id);
-		gen(node->cond);
-		println("	pop rax");
-		println("	cmp rax, 0");
-		println("	je .Lend%03d", id);
-		gen(node->body);
-		gen(node->inc);
-		println("	jmp .Lbegin%03d", id);
-		println(".Lend%03d:", id);
-		return ;
-	}
-	if(node->kind == ND_BLOCK) {
-		int j = 0;
-		for(int i=0;node->stmts[i];i++) {
-			j++;
-		}
-		for(int i=0;i < j-1;i++) {
-			gen(node->stmts[i]);
-			println("	pop rax");
-		}
-		gen(node->stmts[j-1]);
-		return ;
-	}
-	if(node->kind == ND_CALL) {
-		int argc = 0;
-		while(node->call_args[argc]) argc++;
-		if (argc > 6) error("引数が6こ以上です。");
-		for(int i = argc - 1; i >= 0; i--) {
-			gen(node->call_args[i]);
-		}
-		for(int i = 0;i < argc;i++){
-			println("	pop %s", arg_addr[i]);
-		}
-		println("	call %s", node->func_name);
-		println("	push rax");
-		// println("	ret");
-		return ;	
-	}
-	if (node->kind == ND_FUNC) {
-		println("%s:", node->func_name);
-		println("	push rbp");
-		println("	mov rbp, rsp");
-		println("	sub rsp, %d", 208);
-		for (int i = 0; i < node->argc; i++) {
-			println("	mov [rbp-%d], %s",
-					node->params[i]->offset,
-					arg_addr[i]);
-		}
-		gen(node->body);
-		if (strcmp(node->func_name, "main") == 0) {
-			println("    mov eax, 0");
-		}
-		println("	mov rsp, rbp");
-		println("	pop rbp");
-		println("	ret");
-		return;
-	}
-	if(node->kind == ND_ADDR){
-		gen_lval(node->lhs);
-		return ;
-	}
-	if(node->kind == ND_DEREF){
-		gen(node->lhs);
-		println("	pop rax");
-		println("	mov rax, [rax]");
-		println("	push rax");
-		return;
-	}
 	switch (node->kind) {
 	case ND_NUM:
 		println("	push %d", node->val);
@@ -139,15 +35,115 @@ void gen(Node *node) {
 		println("	mov [rax], rdi");
 		println("	push rdi");
 		return ;
+	case ND_RETURN:
+		gen(node->lhs);
+		println("	pop rax");
+		println("	mov rsp, rbp");
+		println("	pop rbp");
+		println("	ret");
+		return ;
+	case ND_IF:
+		int id = lavel_id++;
+		gen(node->cond);
+		println("	pop rax");
+		println("	cmp rax, 0");
+		if(node->els) {
+			println("	je .Lelse%03d", id);
+		} else 
+			println("	je .Lend%03d", id);
+		gen(node->then);
+		if(node->els)
+		{
+			println("	jmp .Lend%03d", id);
+			println(".Lelse%03d:", id);
+			gen(node->els);
+		}
+		println(".Lend%03d:", id);
+		return ;
+	case ND_WHILE:
+		id = lavel_id++;
+		println(".Lbegin%03d:", id);
+		gen(node->cond);
+		println("	pop rax");
+		println("	cmp rax, 0");
+		println("	je .Lend%03d", id);
+		gen(node->then);
+		println("	jmp .Lbegin%03d", id);
+		println(".Lend%03d:", id);
+		return ;
+	case ND_FOR:
+		id = lavel_id++;
+		gen(node->init);
+		println(".Lbegin%03d:", id);
+		gen(node->cond);
+		println("	pop rax");
+		println("	cmp rax, 0");
+		println("	je .Lend%03d", id);
+		gen(node->body);
+		gen(node->inc);
+		println("	jmp .Lbegin%03d", id);
+		println(".Lend%03d:", id);
+		return ;
+	case ND_BLOCK:
+		int j = 0;
+		for(int i=0;node->stmts[i];i++) {
+			j++;
+		}
+		for(int i=0;i < j-1;i++) {
+			gen(node->stmts[i]);
+			println("	pop rax");
+		}
+		gen(node->stmts[j-1]);
+		return ;
+	case ND_CALL:
+		int argc = 0;
+		while(node->call_args[argc]) argc++;
+		if (argc > 6) error("引数が6こ以上です。");
+		for(int i = argc - 1; i >= 0; i--) {
+			gen(node->call_args[i]);
+		}
+		for(int i = 0;i < argc;i++){
+			println("	pop %s", arg_addr[i]);
+		}
+		println("	call %s", node->func_name);
+		println("	push rax");
+		// println("	ret");
+		return ;
+	case ND_FUNC:
+		println("%s:", node->func_name);
+		println("	push rbp");
+		println("	mov rbp, rsp");
+		println("	sub rsp, %d", 208);
+		for (int i = 0; i < node->argc; i++) {
+			println("	mov [rbp-%d], %s",
+					node->params[i]->offset,
+					arg_addr[i]);
+		}
+		gen(node->body);
+		if (strcmp(node->func_name, "main") == 0) {
+			println("    mov eax, 0");
+		}
+		println("	mov rsp, rbp");
+		println("	pop rbp");
+		println("	ret");
+		return;
+	case ND_ADDR:
+		gen_lval(node->lhs);
+		return ;
+	case ND_DEREF:
+		gen(node->lhs);
+		println("	pop rax");
+		println("	mov rax, [rax]");
+		println("	push rax");
+		return;
 	}
 
 	gen(node->lhs);
 	gen(node->rhs);
         
 	println("        pop rdi");
-        println("        pop rax");
+    println("        pop rax");
         switch (node->kind) {
-	
         case ND_ADD:
                 println("        add rax, rdi");
                 break;

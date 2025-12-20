@@ -25,6 +25,15 @@ struct Token {
         int len;
 };
 typedef enum {
+        INT,
+        PTR,
+}       Typename;
+typedef struct Type Type;
+struct Type {
+        Typename kind;
+        struct Type *ptr_to;
+};
+typedef enum {
         ND_ADD,         // +
         ND_SUB,         // -
         ND_MUL,         // *
@@ -78,6 +87,8 @@ struct Node {
 	int offset;
 	char *func_name;
         int argc;
+
+        struct Type *tp;
 };
 
 void error(char *fmt, ...);
@@ -107,6 +118,10 @@ Node *mul();
 Node *unary();
 Node *primary();
 LVar *find_lvar(Token *tok);
+
+Type *type();
+Type *_typename();
+
 
 void gen(Node *node);
 

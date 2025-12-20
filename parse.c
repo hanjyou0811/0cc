@@ -46,12 +46,13 @@ void program() {
 
 Node *func() {
 	locals = NULL;
+	Node *node = calloc(1, sizeof(Node));
 	if(!consume_kind(TK_TYPE)){
 		error_at(token->str, "型を書いてください。");
 	}
+	Type *ty = type();
     Token *tok = consume_ident();
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
-	Node *node = calloc(1, sizeof(Node));
 	node->kind = ND_FUNC;
 	node->func_name = strndup(tok->str, tok->len);
 	if(!consume("(")) 
@@ -125,7 +126,10 @@ Node *stmt() {
 		return block();
 	}
 	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
-	else if(consume_kind(TK_TYPE)) node = def_stmt();
+	else if(consume_kind(TK_TYPE)) { 
+		Type *ty = type();
+		node = def_stmt();
+	}
 	else node = expr();
 	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
 	return node;
@@ -137,6 +141,26 @@ Node *def_stmt(){
 		node = new_node(ND_DEF, node, decl());
 	}
 	return node;
+}
+
+Type *type()
+{
+	Type *ty = _typename();
+	while(consume("*")){
+		Type *ptr = calloc(1, sizeof(Type));
+		ptr->kind = PTR;
+		ptr->ptr_to = ty;
+		ty = ptr;		
+	}
+	return ty;
+}
+
+Type *_typename()
+{
+	Type *ty = calloc(1, sizeof(Type));
+	ty->kind = INT;
+	ty->ptr_to = NULL;
+	return ty;
 }
 
 Node *decl(){
