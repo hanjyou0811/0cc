@@ -389,6 +389,7 @@ Node *primary() {
 			Node *len_expr = expr();
 			expect(']');
 			node = new_node(ND_DEREF, new_add(node, len_expr), NULL);
+			node->tp = node->lhs->tp->ptr_to;
 		}
 		return node;
 	}

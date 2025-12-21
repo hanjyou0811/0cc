@@ -78,5 +78,6 @@ assert 4   "int main(){int x = 0;int y = sizeof (x = 2); return x + y;}"
 assert 2   "int main(){int a[2]; *a = 1; *(a + 1) = 2; return *(a+1);}"
 assert 22  "int main(){int a[2]; int *p; p = a; *p = 10; *(a + 1) = 12;return *a + p[1];}"
 assert 2   "int main(){int a[1 + 2];int *p;p = a;for(int i=0;i<1 + 2;i = i + 1){a[i] = i;}return *(p + 2);}"
+assert 4  "int main(){int a[12];return sizeof a[1];}"
 
 echo OK
