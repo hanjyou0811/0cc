@@ -273,9 +273,9 @@ Node *new_add(Node *lhs, Node *rhs)
 	if(lhs->tp && rhs->tp){
 		if (lhs->tp->kind == INT && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY))
 		{
-			Node *tmp = lhs;
-			lhs = rhs;
-			rhs = tmp;
+			Node *tmp = node->lhs;
+			node->lhs = node->rhs;
+			node->rhs = tmp;
 		}
 		if((lhs->tp->kind == ARRAY || lhs->tp->kind == PTR) && rhs->tp->kind == INT)
 		{
@@ -305,8 +305,9 @@ Node *new_sub(Node *lhs, Node *rhs)
 			return node;
 		}
 		if((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY)) {
-			node->tp = INT;
-			return node;
+			Node *div = new_node(ND_DIV, node, new_node_num(size_of(lhs->tp->ptr_to)));
+			div->tp = INT;
+			return div;
 		}
 	}
 	node->tp = new_type(INT, NULL);
@@ -337,7 +338,11 @@ Node *unary() {
 	if(consume("+")) return primary();
 	if(consume("-")) return new_node(ND_SUB, new_node_num(0), primary());
 	if(consume("*")) return new_node(ND_DEREF, unary(), NULL);
-	if(consume("&")) return new_node(ND_ADDR, unary(), NULL);
+	if(consume("&")) {
+		Node *node = new_node(ND_ADDR, unary(), NULL);
+		node->tp = new_type(PTR, node->lhs->tp);
+		return node;
+	}
 	if(consume("sizeof")) {
 		Node *node = new_node(ND_SIZE, unary(), NULL);
 		node->tp = new_type(INT, NULL);
