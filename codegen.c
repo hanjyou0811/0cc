@@ -3,6 +3,7 @@
 void gen_lval(Node *node) {
 	switch (node->kind) {
 	case ND_LVAR:
+		// if(node->tp->kind == ARRAY) return ;
 		println("	mov rax, rbp");
 		println("	sub rax, %d", node->offset);
 		println("	push rax");
@@ -22,6 +23,7 @@ void gen(Node *node) {
 		return ;
 	case ND_LVAR:
 		gen_lval(node);
+		if(node->tp && node->tp->kind == ARRAY) return ;
 		println("	pop rax");
 		println("	mov rax, [rax]");
 		println("	push rax");
@@ -136,6 +138,11 @@ void gen(Node *node) {
 		println("	mov rax, [rax]");
 		println("	push rax");
 		return;
+	case ND_DECL:
+		return ;
+	case ND_SIZE:
+		println("	push %d", size_of(node->lhs->tp));
+		return ;
 	}
 
 	gen(node->lhs);

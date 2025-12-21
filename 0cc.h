@@ -8,6 +8,9 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define MAX(x, y) ((x) < (y) ? (y) : (x))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+
 typedef enum {
         TK_RESERVED,
 //	TK_RETURN,
@@ -27,11 +30,13 @@ struct Token {
 typedef enum {
         INT,
         PTR,
+        ARRAY,
 }       Typename;
 typedef struct Type Type;
 struct Type {
         Typename kind;
         struct Type *ptr_to;
+        size_t array_size;
 };
 typedef enum {
         ND_ADD,         // +
@@ -56,6 +61,8 @@ typedef enum {
 	ND_ADDR,	// &x
 	ND_DEREF,	// *x
         ND_DEF,         // def val
+        ND_DECL,        
+        ND_SIZE,        //sizeof x
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {
@@ -63,6 +70,7 @@ struct LVar {
 	char *name;
 	int len;
 	int offset;
+        Type *tp;
 };
 typedef struct Node Node;
 struct Node {
@@ -96,7 +104,7 @@ void error_at(char *loc, char *fmt, ...);
 bool consume(char *op);
 bool consume_kind(TokenKind tk);
 Token *consume_ident();
-int consume_paramList(Node *node);
+int consume_paramList(Node *node, Type *ty);
 void expect(char op);
 int expect_number();
 bool at_eof();
@@ -105,8 +113,8 @@ Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
 void program();
 Node *func();
-Node *def_stmt();
-Node *decl();
+Node *def_stmt(Type *tp);
+Node *decl(Type *tp);
 Node *block();
 Node *assign();
 Node *expr();
@@ -121,6 +129,7 @@ LVar *find_lvar(Token *tok);
 
 Type *type();
 Type *_typename();
+Type *new_type(Typename typename, Type *next);
 
 
 void gen(Node *node);
@@ -146,5 +155,8 @@ int is_alnum(char c);
 int is_type(char *ident);
 int match_token(char *src, char *tgt);
 char *strndup(const char *ptr, int len);
+char *strdup(const char *s);
+int size_of(Type *tp);
+int max(int a, int b);
 
 #endif

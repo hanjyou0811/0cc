@@ -56,3 +56,20 @@ extern_funcs *add_extern_funcs(const char *funcname)
 	funcs = ptr;
 	return ptr;
 }
+
+int size_of(Type *tp) {
+    switch (tp->kind) {
+    case INT:
+        return 4;
+    case PTR:
+        return 8;
+    case ARRAY:
+        return size_of(tp->ptr_to) * tp->array_size;
+    }
+}
+
+int max(int a, int b)
+{
+	if(a < b) return a;
+	return b;
+}

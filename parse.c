@@ -3,18 +3,19 @@
 Node *code[100];
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
-        Node *node      = calloc(1, sizeof(Node));
-        node->kind      = kind;
-        node->lhs       = lhs;
-        node->rhs       = rhs;
-        return node;
+	Node *node      = calloc(1, sizeof(Node));
+	node->kind      = kind;
+	node->lhs       = lhs;
+	node->rhs       = rhs;
+	return node;
 }
 
 Node *new_node_num(int val) {
-        Node *node      = calloc(1, sizeof(Node));
-        node->kind      = ND_NUM;
-        node->val       = val;
-        return node;
+	Node *node      = calloc(1, sizeof(Node));
+	node->kind      = ND_NUM;
+	node->val       = val;
+	node->tp 		= new_type(INT, NULL);
+	return node;
 }
 
 Node *new_node_if(Node* cond, Node *then, Node *els) 
@@ -36,6 +37,35 @@ Node *new_node_while(Node* cond, Node *body)
 	return node;
 }
 
+Type *new_type(Typename typename, Type *next)
+{
+	Type *tp = calloc(1, sizeof(Type));
+	tp->kind = typename;
+	if(next) tp->ptr_to = next;
+	return tp;
+}
+
+int eval_const_expr(Node *node) {
+    switch (node->kind) {
+    case ND_NUM:
+        return node->val;
+    case ND_ADD:
+        return eval_const_expr(node->lhs)
+             + eval_const_expr(node->rhs);
+    case ND_SUB:
+        return eval_const_expr(node->lhs)
+             - eval_const_expr(node->rhs);
+    case ND_MUL:
+        return eval_const_expr(node->lhs)
+             * eval_const_expr(node->rhs);
+    case ND_DIV:
+        return eval_const_expr(node->lhs)
+             / eval_const_expr(node->rhs);
+    default:
+        error_at(token->str, "配列サイズは定数の式である必要があります");
+    }
+}
+
 void program() {
 	int i = 0;
 	while(!at_eof()) {
@@ -55,10 +85,11 @@ Node *func() {
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	node->kind = ND_FUNC;
 	node->func_name = strndup(tok->str, tok->len);
+	node->tp = ty;
 	if(!consume("(")) 
 		error_at(token->str, "'('が来るべきです。");
 	if(!consume(")")) 
-		node->argc = consume_paramList(node);
+		node->argc = consume_paramList(node, ty);
 	node->body = block();
 	return node;
 }
@@ -106,7 +137,10 @@ Node *stmt() {
 		// init
 		if (!consume(";")) {
 			if(!consume_kind(TK_TYPE)) node->init = expr();
-			else node->init = def_stmt();
+			else {
+				Type *ty = type();
+				node->init = def_stmt(ty);
+			}
 			if(!consume(";")) error_at(token->str, "初期化式を書いてください");
 		}
 		// cond
@@ -128,17 +162,17 @@ Node *stmt() {
 	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
 	else if(consume_kind(TK_TYPE)) { 
 		Type *ty = type();
-		node = def_stmt();
+		node = def_stmt(ty);
 	}
 	else node = expr();
 	if (!consume(";")) error_at(token->str, "';'で終わっていないです");
 	return node;
 }
 
-Node *def_stmt(){
-	Node *node = decl();
+Node *def_stmt(Type *tp){
+	Node *node = decl(tp);
 	while(consume(",")){
-		node = new_node(ND_DEF, node, decl());
+		node = new_node(ND_DEF, node, decl(tp));
 	}
 	return node;
 }
@@ -147,42 +181,49 @@ Type *type()
 {
 	Type *ty = _typename();
 	while(consume("*")){
-		Type *ptr = calloc(1, sizeof(Type));
-		ptr->kind = PTR;
-		ptr->ptr_to = ty;
-		ty = ptr;		
+		ty = new_type(PTR, ty);
 	}
 	return ty;
 }
 
 Type *_typename()
 {
-	Type *ty = calloc(1, sizeof(Type));
-	ty->kind = INT;
-	ty->ptr_to = NULL;
+	Type *ty = new_type(INT, NULL);
 	return ty;
 }
 
-Node *decl(){
-	Node *node = calloc(1, sizeof(Node));
+Node *decl(Type *tp){
 	Token *tok = consume_ident();
 	if(!tok) error_at(token->str, "識別子が来るべきです。");
-	node->kind = ND_LVAR;
-	LVar *lvar = find_lvar(tok);
-	if (lvar) {
-		error_at(tok->str, "既に定義されている変数です。");
-	} else {
-		lvar = calloc(1, sizeof(LVar));
-		lvar->next = locals;
-		lvar->name = tok->str;
-		lvar->len = tok->len;
-		if (locals) lvar->offset = locals->offset + 8;
-		else lvar->offset = 8;
-		node->offset = lvar->offset;
-		locals = lvar;
+	if(consume("[")){
+		Node *len_expr = expr();
+		expect(']');
+		int len = eval_const_expr(len_expr);
+		Type *arr = new_type(ARRAY, tp);
+		arr->array_size = len;
+		tp = arr;
 	}
+	if (find_lvar(tok))
+		error_at(tok->str, "既に定義されている変数です。");
+	LVar *lvar = calloc(1, sizeof(LVar));
+	lvar->name = tok->str;
+	lvar->len = tok->len;
+	lvar->tp	= tp;
+	if(locals)
+		lvar->offset = locals->offset + MAX(size_of(locals->tp), 8);
+	else
+		lvar->offset = MAX(size_of(tp), 8);
+	lvar->next = locals;
+	locals = lvar;
+
+	Node *node = calloc(1, sizeof(Node));
+	node->kind = ND_DECL;
+	node->offset = lvar->offset;
+	node->tp = tp;
 	if(consume("=")){
+		node->kind = ND_LVAR;
 		node = new_node(ND_ASSIGN, node, assign());
+		node->tp = tp;
 	}
 	return node;
 }
@@ -197,7 +238,10 @@ Node *expr() {
 
 Node *assign() {
 	Node *node = equality();
-	if(consume("=")) node = new_node(ND_ASSIGN, node, assign());
+	if(consume("=")) {
+		node = new_node(ND_ASSIGN, node, assign());
+		node->tp = node->lhs->tp;
+	}
 	return node;
 }
 
@@ -223,13 +267,59 @@ Node *relational() {
         }
 }
 
+Node *new_add(Node *lhs, Node *rhs)
+{
+	Node *node = new_node(ND_ADD, lhs, rhs);
+	if(lhs->tp && rhs->tp){
+		if (lhs->tp->kind == INT && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY))
+		{
+			Node *tmp = lhs;
+			lhs = rhs;
+			rhs = tmp;
+		}
+		if((lhs->tp->kind == ARRAY || lhs->tp->kind == PTR) && rhs->tp->kind == INT)
+		{
+			int size = size_of(lhs->tp->ptr_to);
+			Node *mul = new_node(ND_MUL, rhs, new_node_num(size));
+			mul->tp = INT;
+			node->rhs = mul;
+			node->tp = lhs->tp;
+			return node;
+		}
+	}
+	node->tp = new_type(INT, NULL);
+	return node;
+}
+
+Node *new_sub(Node *lhs, Node *rhs)
+{
+	Node *node = new_node(ND_SUB, lhs, rhs);
+	if(lhs->tp && rhs->tp){
+		if ((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && rhs->tp->kind == INT)
+		{
+			int size = size_of(lhs->tp->ptr_to);
+			rhs = new_node(ND_MUL, rhs, new_node_num(size));
+			rhs->tp = INT;
+			node->rhs = rhs;
+			node->tp = lhs->tp;
+			return node;
+		}
+		if((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY)) {
+			node->tp = INT;
+			return node;
+		}
+	}
+	node->tp = new_type(INT, NULL);
+	return node;
+}
+
 Node *add() {
         Node *node = mul();
 
         for(;;) {
-                if(consume("+")) node = new_node(ND_ADD, node, mul());
-                else if(consume("-")) node = new_node(ND_SUB, node, mul());
-                else return node;
+			if(consume("+")) node = new_add(node, mul());
+			else if(consume("-")) node = new_sub(node, mul());
+			else return node;
         }
 }
 
@@ -237,25 +327,30 @@ Node *mul() {
         Node *node = unary();
 
         for(;;) {
-                if(consume("*")) node = new_node(ND_MUL, node, unary());
-                else if(consume("/")) node = new_node(ND_DIV, node, unary());
-                else return node;
+			if(consume("*")) node = new_node(ND_MUL, node, unary());
+			else if(consume("/")) node = new_node(ND_DIV, node, unary());
+			else return node;
         }
 }
 
 Node *unary() {
-        if(consume("+")) return primary();
-        if(consume("-")) return new_node(ND_SUB, new_node_num(0), primary());
-       	if(consume("*")) return new_node(ND_DEREF, unary(), NULL);
+	if(consume("+")) return primary();
+	if(consume("-")) return new_node(ND_SUB, new_node_num(0), primary());
+	if(consume("*")) return new_node(ND_DEREF, unary(), NULL);
 	if(consume("&")) return new_node(ND_ADDR, unary(), NULL);
+	if(consume("sizeof")) {
+		Node *node = new_node(ND_SIZE, unary(), NULL);
+		node->tp = new_type(INT, NULL);
+		return node;
+	}
 	return primary();
 }
 
 Node *primary() {
-        Node *node;
+    Node *node;
 	if(consume("(")) {
-                node = expr();
-                if (!consume(")")) error_at(token->str, "')'で閉じてください");
+		node = expr();
+		if (!consume(")")) error_at(token->str, "')'で閉じてください");
 		return node;
         }
 	Token *tok = consume_ident();
@@ -278,6 +373,7 @@ Node *primary() {
 		LVar *lvar = find_lvar(tok);
 		if (lvar) {
 			node->offset = lvar->offset;
+			node->tp = lvar->tp;
 		} else {
 			error_at(tok->str, "定義されていない変数です。");
 			// lvar = calloc(1, sizeof(LVar));
@@ -288,6 +384,11 @@ Node *primary() {
 			// else lvar->offset = 8;
 			// node->offset = lvar->offset;
 			// locals = lvar;
+		}
+		if(consume("[")) {
+			Node *len_expr = expr();
+			expect(']');
+			node = new_node(ND_DEREF, new_add(node, len_expr), NULL);
 		}
 		return node;
 	}
@@ -356,26 +457,31 @@ Token *consume_ident() {
 	return ret;
 }
 
-int consume_paramList(Node *node) {
+int consume_paramList(Node *node, Type *ty) {
     int i;
-	for (i = 0; !consume(")"); i++) {
-		if (i > 0 && !consume(","))
-			error_at(token->str, "','が必要です。");
-		if(!consume_kind(TK_TYPE))
+    for (i = 0; !consume(")"); i++) {
+        if (i > 0 && !consume(","))
+            error_at(token->str, "','が必要です。");
+        if(!consume_kind(TK_TYPE))
 			error_at(token->str, "型が必要です。");
-		Token *tok = consume_ident();
-		if (!tok)
-			error_at(token->str, "識別子が必要です。");
+        Type *param_ty = type();
+        Token *tok = consume_ident();
+        if (!tok)
+            error_at(token->str, "識別子が必要です。");
+        LVar *var = calloc(1, sizeof(LVar));
+        var->name = tok->str;
+        var->len  = tok->len;
+        var->tp   = param_ty;
+        if (locals)
+            var->offset = locals->offset + MAX(size_of(locals->tp), 8);
+        else
+            var->offset = MAX(size_of(param_ty), 8);
+        var->next = locals;
+        locals = var;
 
-		LVar *var = calloc(1, sizeof(LVar));
-		var->name = tok->str;
-		var->len  = tok->len;
-		var->offset = locals ? locals->offset + 8 : 8;
-		var->next = locals;
-		locals = var;
-		node->params[i] = var; 
-	}
-	return i;
+        node->params[i] = var;
+    }
+    return i;
 }
 
 void expect(char op) {
@@ -410,9 +516,9 @@ void tokenize(char *p) {
 	Token *cur = &head;
         while (*p) {
 		if (isspace(*p)) {
-                        p++;
-                        continue;
-                }
+			p++;
+			continue;
+        }
 		if (match_token(p, "return")) {
 			cur = new_token(TK_RESERVED, cur, p);
 			cur->len = 6;
@@ -455,32 +561,32 @@ void tokenize(char *p) {
 			}
 			char *ident = strndup(p, i);
 			if(is_type(ident)) cur = new_token(TK_TYPE, cur, p);
+			else if(!memcmp(ident, "sizeof", 6)) cur = new_token(TK_RESERVED, cur, p);
 			else cur = new_token(TK_IDENT, cur, p);
 			cur->len = i;
 			p = p + i;
 			continue;
 		}
-                if (*p == '(' || *p == ')') {
-                        cur = new_token(TK_RESERVED, cur, p++);
-                        cur->len = 1;
-                        continue;
-                }
+		if (*p == '(' || *p == ')') {
+			cur = new_token(TK_RESERVED, cur, p++);
+			cur->len = 1;
+			continue;
+		}
 
-                if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
-                        !memcmp(p, "==", 2) || !memcmp(p, "!=", 2)){
-                        cur = new_token(TK_RESERVED, cur, p);
-                        cur->len = 2;
-                        p = p + 2;
-                        continue;
-                }
+		if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
+				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2)){
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 2;
+			p = p + 2;
+			continue;
+		}
 
-                if (*p == '+' || *p == '-' || *p == '*' || *p == '/' ||
-                        *p == '<' || *p == '>' || *p == '&') {
-                        cur = new_token(TK_RESERVED, cur, p++);
-                        cur->len = 1;
-                        continue;
-                }
-		
+		if (*p == '+' || *p == '-' || *p == '*' || *p == '/' ||
+				*p == '<' || *p == '>' || *p == '&') {
+			cur = new_token(TK_RESERVED, cur, p++);
+			cur->len = 1;
+			continue;
+		}
 		if (*p == '=') {
 			cur = new_token(TK_RESERVED, cur, p++);
 			cur->len = 1;
@@ -496,15 +602,20 @@ void tokenize(char *p) {
 			cur->len = 1;
 			continue;
 		}
-                if (isdigit(*p)) {
-                        cur = new_token(TK_NUM, cur, p);
-                        cur->val = strtol(p, &p, 10);
-                        char buffer[20];
-                        cur->len = sprintf(buffer, "%d", cur->val);
-                        continue;
-                }
+		if (*p == '[' || *p == ']') {
+			cur = new_token(TK_RESERVED, cur, p++);
+			cur->len = 1;
+			continue;
+		}
+		if (isdigit(*p)) {
+			cur = new_token(TK_NUM, cur, p);
+			cur->val = strtol(p, &p, 10);
+			char buffer[20];
+			cur->len = sprintf(buffer, "%d", cur->val);
+			continue;
+		}
 		
-                error_at(p, "トークナイズできません");
+        error_at(p, "トークナイズできません");
         }
         new_token(TK_EOF, cur, p++);
 	token = head.next;
