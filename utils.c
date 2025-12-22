@@ -19,7 +19,7 @@ int is_alnum(char c)
 }
 
 int is_type(char *ident){
-	return (!memcmp(ident, "int", 3));
+	return (!memcmp(ident, "int", 3) || !memcmp(ident, "char", 4));
 }
 
 int match_token(char *str, char *tgt)
@@ -63,6 +63,8 @@ int size_of(Type *tp) {
         return 4;
     case PTR:
         return 8;
+	case CHAR:
+		return 1;
     case ARRAY:
         return size_of(tp->ptr_to) * tp->array_size;
     }

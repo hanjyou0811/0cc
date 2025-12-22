@@ -28,7 +28,8 @@ void gen(Node *node) {
 		gen_lval(node);
 		if(node->tp && node->tp->kind == ARRAY) return ;
 		println("	pop rax");
-		println("	mov rax, [rax]");
+		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
+		else println("	mov rax, [rax]");
 		println("	push rax");
 		return ;
 	case ND_ASSIGN:
@@ -37,7 +38,8 @@ void gen(Node *node) {
 		
 		println("	pop rdi");
 		println("	pop rax");
-		println("	mov [rax], rdi");
+		if(node->tp && node->tp->kind == CHAR) println("	mov BYTE PTR [rax], dil");
+		else println("	mov [rax], rdi");
 		println("	push rdi");
 		return ;
 	case ND_RETURN:
@@ -138,7 +140,8 @@ void gen(Node *node) {
 	case ND_DEREF:
 		gen(node->lhs);
 		println("	pop rax");
-		println("	mov rax, [rax]");
+		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
+		else println("	mov rax, [rax]");
 		println("	push rax");
 		return;
 	case ND_DECL:
@@ -149,7 +152,8 @@ void gen(Node *node) {
 	case ND_GVAR:
 		gen_lval(node);
 		println("	pop rax");
-		println("	mov rax, [rax]");
+		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
+		else println("	mov rax, [rax]");
 		println("	push rax");
 		return ;
 	}

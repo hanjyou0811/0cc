@@ -81,11 +81,12 @@ void program() {
 Node *func() {
 	locals = NULL;
 	Node *node = calloc(1, sizeof(Node));
-	if(!consume_kind(TK_TYPE)){
+	Token *tok = consume_kind(TK_TYPE);
+	if(!tok){
 		error_at(token->str, "型を書いてください。");
 	}
-	Type *ty = type();
-    Token *tok = consume_ident();
+	Type *ty = type(tok);
+	tok = consume_kind(TK_IDENT);
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	node->kind = ND_FUNC;
 	node->func_name = strndup(tok->str, tok->len);
@@ -140,9 +141,10 @@ Node *stmt() {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		// init
 		if (!consume(";")) {
-			if(!consume_kind(TK_TYPE)) node->init = expr();
+			Token *tok = consume_kind(TK_TYPE);
+			if(!tok) node->init = expr();
 			else {
-				Type *ty = type();
+				Type *ty = type(tok);
 				node->init = def_stmt(ty);
 			}
 			if(!consume(";")) error_at(token->str, "初期化式を書いてください");
@@ -163,9 +165,10 @@ Node *stmt() {
 	if (token->str[0] == '{') {
 		return block();
 	}
+	Token *tok = consume_kind(TK_TYPE);
 	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
-	else if(consume_kind(TK_TYPE)) { 
-		Type *ty = type();
+	else if(tok) { 
+		Type *ty = type(tok);
 		node = def_stmt(ty);
 	}
 	else node = expr();
@@ -183,10 +186,11 @@ Node *def_stmt(Type *tp){
 
 void global_decl()
 {
-	if(!consume_kind(TK_TYPE)) {
+	Token *tok = consume_kind(TK_TYPE);
+	if(!tok) {
 		error_at(token->str, "型が必要です。");
 	}
-	Type *ty = type();
+	Type *ty = type(tok);
 	decl_global(ty);
 	expect(';');
 }
@@ -206,18 +210,21 @@ void decl_global(Type *ty)
 	globals = gvar;
 }
 
-Type *type()
+Type *type(Token *tok)
 {
-	Type *ty = _typename();
+	Type *ty = _typename(tok);
 	while(consume("*")){
 		ty = new_type(PTR, ty);
 	}
 	return ty;
 }
 
-Type *_typename()
+Type *_typename(Token *tok)
 {
-	Type *ty = new_type(INT, NULL);
+	Typename tp;
+	if(!memcmp(tok->str, "int", 3)) tp = INT;
+	else if(!memcmp(tok->str, "char", 4)) tp = CHAR;
+	Type *ty = new_type(tp, NULL);
 	return ty;
 }
 
@@ -507,12 +514,13 @@ bool consume(char *op) {
         return true;
 }
 
-bool consume_kind(TokenKind tk)
+Token *consume_kind(TokenKind tk)
 {
 	//token->kind がtkと違う
-	if(token->kind != tk) return false;
+	if(token->kind != tk) return NULL;
+	Token *ret = token;
 	token = token->next;
-	return true;
+	return ret;
 }
 
 Token *consume_ident() {
@@ -527,10 +535,11 @@ int consume_paramList(Node *node, Type *ty) {
     for (i = 0; !consume(")"); i++) {
         if (i > 0 && !consume(","))
             error_at(token->str, "','が必要です。");
-        if(!consume_kind(TK_TYPE))
+		Token *tok = consume_kind(TK_TYPE);
+        if(!tok)
 			error_at(token->str, "型が必要です。");
-        Type *param_ty = type();
-        Token *tok = consume_ident();
+        Type *param_ty = type(tok);
+        tok = consume_ident();
         if (!tok)
             error_at(token->str, "識別子が必要です。");
         LVar *var = calloc(1, sizeof(LVar));

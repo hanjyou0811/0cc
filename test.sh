@@ -86,5 +86,12 @@ assert 190  "int main(){int a = 190; a += 3; a -= 3; a /= 2; a*= 2;return a;}"
 assert 3  "int main(){int a[5]; for(int i=0;i<5;i+=1) {a[i] = i+1;} int *q = a; q += 2; return *q;}"
 assert 6  "int a = 3;int main(){int b = a + 3; return b;}"
 assert 42  "int a;int main(){int *b = &a;*b = 42;return a;}"
+assert 1   "int main(){char c;return sizeof c;}"
+assert 12  "int main(){char x[12]; return sizeof x;}"
+assert 3   "int main(){char x[3];x[0] = -1;x[1] = 2;int y;y = 4;return x[0] + y;}"
+assert 2 "int main(){char a[3]; a[0]=1; a[1]=2; char *p=a; return p[1];}"
+assert 255 "int main(){char c=-1; return c;}"
+assert 1 "int main(){char a[12]; return sizeof(a[0]);}"
+assert 1 "int main(){char a[4]; return sizeof(*a);}"
 
 echo OK

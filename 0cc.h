@@ -30,6 +30,7 @@ struct Token {
 typedef enum {
         INT,
         PTR,
+        CHAR,
         ARRAY,
 }       Typename;
 typedef struct Type Type;
@@ -115,7 +116,7 @@ struct Node {
 void error(char *fmt, ...);
 void error_at(char *loc, char *fmt, ...);
 bool consume(char *op);
-bool consume_kind(TokenKind tk);
+Token *consume_kind(TokenKind tk);
 Token *consume_ident();
 int consume_paramList(Node *node, Type *ty);
 void expect(char op);
@@ -145,8 +146,8 @@ Node *primary();
 LVar *find_lvar(Token *tok);
 GVar *find_gvar(Token *tok);
 
-Type *type();
-Type *_typename();
+Type *type(Token *tok);
+Type *_typename(Token *tok);
 Type *new_type(Typename typename, Type *next);
 
 
