@@ -69,7 +69,11 @@ int eval_const_expr(Node *node) {
 void program() {
 	int i = 0;
 	while(!at_eof()) {
-		code[i++] = func();
+		if(is_function()) {
+			code[i++] = func();
+		}else{
+			global_decl();
+		}
 	}
 	code[i] = NULL;
 }
@@ -177,6 +181,31 @@ Node *def_stmt(Type *tp){
 	return node;
 }
 
+void global_decl()
+{
+	if(!consume_kind(TK_TYPE)) {
+		error_at(token->str, "型が必要です。");
+	}
+	Type *ty = type();
+	decl_global(ty);
+	expect(';');
+}
+
+void decl_global(Type *ty)
+{
+	Token *tok = consume_ident();
+	GVar *gvar = calloc(1, sizeof(GVar));
+	gvar->name = strndup(tok->str, tok->len);
+	gvar->len  = tok->len;
+	gvar->tp   = ty;
+	if(consume("=")) {
+		Node *node = expr();
+		gvar->val = eval_const_expr(node);
+	}
+	gvar->next = globals;
+	globals = gvar;
+}
+
 Type *type()
 {
 	Type *ty = _typename();
@@ -203,7 +232,7 @@ Node *decl(Type *tp){
 		arr->array_size = len;
 		tp = arr;
 	}
-	if (find_lvar(tok))
+	if (find_lvar(tok) || find_gvar(tok))
 		error_at(tok->str, "既に定義されている変数です。");
 	LVar *lvar = calloc(1, sizeof(LVar));
 	lvar->name = tok->str;
@@ -397,7 +426,14 @@ Node *primary() {
 			node->offset = lvar->offset;
 			node->tp = lvar->tp;
 		} else {
-			error_at(tok->str, "定義されていない変数です。");
+			GVar *gvar = find_gvar(tok);
+			if(gvar){
+				node->kind = ND_GVAR;
+				node->tp = gvar->tp;
+				node->gvar_name = gvar->name;
+			}else{
+				error_at(tok->str, "定義されていない変数です。");
+			}
 			// lvar = calloc(1, sizeof(LVar));
 			// lvar->next = locals;
 			// lvar->name = tok->str;
@@ -424,6 +460,12 @@ Node *primary() {
 LVar *find_lvar(Token *tok) {
 	for (LVar *var = locals; var; var = var->next) {
 		if (var->len == tok->len && !memcmp(tok->str, var->name, var->len)) return var;
+	}
+	return NULL;
+}
+GVar *find_gvar(Token *tok) {
+	for (GVar *gvar = globals;gvar;gvar = gvar->next) {
+		if(gvar->len == tok->len && !memcmp(tok->str, gvar->name, gvar->len)) return gvar;
 	}
 	return NULL;
 }

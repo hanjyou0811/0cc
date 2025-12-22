@@ -8,6 +8,9 @@ void gen_lval(Node *node) {
 		println("	sub rax, %d", node->offset);
 		println("	push rax");
 		return ;
+	case ND_GVAR:
+		println("	lea rax, [rip + %s]", node->gvar_name);
+		println("	push rax");
 	case ND_DEREF:
 		gen(node->lhs);
 		return ;
@@ -143,6 +146,12 @@ void gen(Node *node) {
 	case ND_SIZE:
 		println("	push %d", size_of(node->lhs->tp));
 		return ;
+	case ND_GVAR:
+		gen_lval(node);
+		println("	pop rax");
+		println("	mov rax, [rax]");
+		println("	push rax");
+		return ;
 	}
 
 	gen(node->lhs);
@@ -185,4 +194,19 @@ void gen(Node *node) {
 		println("        movzb rax, al");
 	}
 	println("        push rax");
+}
+
+void gen_gval()
+{
+	println(".data");
+	GVar *gvar = globals;
+	while(gvar)
+	{
+		println("%s:", gvar->name);
+		if(gvar->val)
+			println("	.long %d", gvar->val);
+		else
+			println("	.zero");
+		gvar = gvar->next;
+	}
 }

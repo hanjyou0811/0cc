@@ -68,8 +68,16 @@ int size_of(Type *tp) {
     }
 }
 
-int max(int a, int b)
+int is_function()
 {
-	if(a < b) return a;
-	return b;
+	// func := type ident "(" ...
+	Token *t = token;
+	// type
+	if(t->kind != TK_TYPE) return false;
+	t = t->next;
+	// ident
+	if(t->kind != TK_IDENT) return false;
+	t = t->next;
+	// "("
+	return (t->kind == TK_RESERVED && t->str[0] == '(');
 }

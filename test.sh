@@ -84,5 +84,7 @@ assert 3  "int main() {int a[6];for (int i = 0; i < 6; i = i + 1) {a[i] = i * 10
 assert 5  "int main() {int a[10];int *p = a + 7;int *q = a + 2;return p - q;}"
 assert 190  "int main(){int a = 190; a += 3; a -= 3; a /= 2; a*= 2;return a;}"
 assert 3  "int main(){int a[5]; for(int i=0;i<5;i+=1) {a[i] = i+1;} int *q = a; q += 2; return *q;}"
+assert 6  "int a = 3;int main(){int b = a + 3; return b;}"
+assert 42  "int a;int main(){int *b = &a;*b = 42;return a;}"
 
 echo OK

@@ -3,6 +3,7 @@
 char *user_input;
 Token *token;
 LVar *locals = NULL;
+GVar *globals = NULL;
 int lavel_id = 0;
 const char *arg_addr[] = {
         "rdi", "rsi", "rdx", "rcx", "r8", "r9"
@@ -27,6 +28,8 @@ int main(int argc, char **argv){
 		println(".extern %s", funcs->func_name);
 		funcs = funcs->nex;
 	}
+	gen_gval();
+	println(".text");
 	for (int i=0; code[i]; i++) {
 		gen(code[i]);
 	}

@@ -63,6 +63,7 @@ typedef enum {
         ND_DEF,         // def val
         ND_DECL,        
         ND_SIZE,        //sizeof x
+        ND_GVAR,
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {
@@ -71,6 +72,17 @@ struct LVar {
 	int len;
 	int offset;
         Type *tp;
+};
+typedef struct GVar GVar;
+struct GVar {
+        GVar *next;
+
+        char *name;
+        int len;
+        Type *tp;
+        
+        int val;        // int
+        int *arr;       // arr
 };
 typedef struct Node Node;
 struct Node {
@@ -94,6 +106,7 @@ struct Node {
         int val;        //kind == ND_NUM
 	int offset;
 	char *func_name;
+        char *gvar_name;
         int argc;
 
         struct Type *tp;
@@ -111,10 +124,14 @@ bool at_eof();
 void tokenize(char *p);
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
+Node *new_add(Node *lhs, Node *rhs);
+Node *new_sub(Node *lhs, Node *rhs);
 void program();
 Node *func();
 Node *def_stmt(Type *tp);
 Node *decl(Type *tp);
+void global_decl();
+void decl_global(Type *ty);
 Node *block();
 Node *assign();
 Node *expr();
@@ -126,6 +143,7 @@ Node *mul();
 Node *unary();
 Node *primary();
 LVar *find_lvar(Token *tok);
+GVar *find_gvar(Token *tok);
 
 Type *type();
 Type *_typename();
@@ -133,11 +151,13 @@ Type *new_type(Typename typename, Type *next);
 
 
 void gen(Node *node);
+void gen_gval();
 
 extern Token *token;
 extern char *user_input;
 extern Node *code[100];
 extern LVar *locals;
+extern GVar *globals;
 extern int lavel_id;
 extern const char *arg_addr[];
 
@@ -157,6 +177,6 @@ int match_token(char *src, char *tgt);
 char *strndup(const char *ptr, int len);
 char *strdup(const char *s);
 int size_of(Type *tp);
-int max(int a, int b);
+int is_function();
 
 #endif
