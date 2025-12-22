@@ -242,6 +242,23 @@ Node *assign() {
 		node = new_node(ND_ASSIGN, node, assign());
 		node->tp = node->lhs->tp;
 	}
+	else if(consume("+=")) {
+		Node *rhs = new_add(node, assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}else if(consume("-=")) {
+		Node *rhs = new_sub(node, assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}else if(consume("*=")) {
+		Node *rhs = new_node(ND_MUL, node, assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}else if(consume("/=")) {
+		Node *rhs = new_node(ND_DIV, node,assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}
 	return node;
 }
 
@@ -259,11 +276,11 @@ Node *relational() {
         Node *node = add();
 
         for(;;) {
-                if(consume("<")) node = new_node(ND_LST, node, add());
-                else if(consume("<=")) node = new_node(ND_LSE, node, add());
-                else if(consume(">")) node = new_node(ND_LST, add(), node);
-                else if(consume(">=")) node = new_node(ND_LSE, add(), node);
-                else return node;
+			if(consume("<")) node = new_node(ND_LST, node, add());
+			else if(consume("<=")) node = new_node(ND_LSE, node, add());
+			else if(consume(">")) node = new_node(ND_LST, add(), node);
+			else if(consume(">=")) node = new_node(ND_LSE, add(), node);
+			else return node;
         }
 }
 
@@ -580,7 +597,9 @@ void tokenize(char *p) {
 		}
 
 		if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
-				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2)){
+				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2) ||
+				!memcmp(p, "+=", 2) || !memcmp(p, "-=", 2) || !memcmp(p, "*=", 2) || !memcmp(p, "/=", 2)
+			){
 			cur = new_token(TK_RESERVED, cur, p);
 			cur->len = 2;
 			p = p + 2;

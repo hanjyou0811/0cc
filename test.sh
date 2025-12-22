@@ -82,4 +82,7 @@ assert 1  "int main(){int a[2]; return &a[1] - &a[0];}"
 assert 1  "int main() {int a[4];int *p = a;int *q = a + 1;return q - p;}"
 assert 3  "int main() {int a[6];for (int i = 0; i < 6; i = i + 1) {a[i] = i * 10;}int *p = &a[2];int *q = &a[5];int diff = q - p;return diff;}"
 assert 5  "int main() {int a[10];int *p = a + 7;int *q = a + 2;return p - q;}"
+assert 190  "int main(){int a = 190; a += 3; a -= 3; a /= 2; a*= 2;return a;}"
+assert 3  "int main(){int a[5]; for(int i=0;i<5;i+=1) {a[i] = i+1;} int *q = a; q += 2; return *q;}"
+
 echo OK
