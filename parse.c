@@ -390,7 +390,13 @@ Node *mul() {
 Node *unary() {
 	if(consume("+")) return primary();
 	if(consume("-")) return new_node(ND_SUB, new_node_num(0), primary());
-	if(consume("*")) return new_node(ND_DEREF, unary(), NULL);
+	if(consume("*")) 
+	{
+		Node *lhs = unary();
+		Node *node = new_node(ND_DEREF, lhs, NULL);
+		node->tp = lhs->tp->ptr_to;
+		return node;
+	}
 	if(consume("&")) {
 		Node *node = new_node(ND_ADDR, unary(), NULL);
 		node->tp = new_type(PTR, node->lhs->tp);
