@@ -465,6 +465,16 @@ Node *primary() {
 		return node;
 	}
 	else {
+		tok = consume_kind(TK_STR);
+		if(tok) {
+			// printf("%s", tok->str);
+			node = calloc(1, sizeof(Node));
+			node->str = tok->str;
+			node->val = tok->len + 1; // ヌル文字分
+			node->tp = new_type(STR, NULL);
+			node->kind = ND_STR;
+			return node;
+		}
 		node = new_node_num(expect_number());
     }
     return node;
@@ -591,7 +601,7 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
 }
 
 void tokenize(char *p) {
-       	Token head;
+    Token head;
 	head.next = NULL;
 	Token *cur = &head;
         while (*p) {
@@ -696,9 +706,24 @@ void tokenize(char *p) {
 			cur->len = sprintf(buffer, "%d", cur->val);
 			continue;
 		}
-		
+		if (*p == '"') {
+			int i = 1;
+			while (*(p + i) != '"' && *(p + i) != '\0') {
+				i++;
+			}
+			if (*(p + i) == '"') {
+				i++; 
+			} else {
+				error_at(p, "文字列リテラルが閉じていません");
+			}
+			cur = new_token(TK_STR, cur, p);
+			cur->str = strndup(p+1, i-2);
+			cur->len = i-2;
+			p += i;
+			continue;
+		}
         error_at(p, "トークナイズできません");
-        }
-        new_token(TK_EOF, cur, p++);
+    }
+    new_token(TK_EOF, cur, p++);
 	token = head.next;
 }

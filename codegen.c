@@ -11,6 +11,7 @@ void gen_lval(Node *node) {
 	case ND_GVAR:
 		println("	lea rax, [rip + %s]", node->gvar_name);
 		println("	push rax");
+		return ;
 	case ND_DEREF:
 		gen(node->lhs);
 		return ;
@@ -33,9 +34,18 @@ void gen(Node *node) {
 		println("	push rax");
 		return ;
 	case ND_ASSIGN:
+		// 文字列を代入したときの生成がよくわからない
 		gen_lval(node->lhs);
+		if(node->rhs->tp && node->rhs->tp->kind == STR) {
+			println("	pop rax");
+			int size_ = node->rhs->val;
+			for(int i=0; i < size_;i++){
+				char c = (i < size_) ? node->rhs->str[i] : 0;
+				println("	mov byte ptr [rax + %d], %d", i, c);
+			}
+			return ;
+		}
 		gen(node->rhs);
-		
 		println("	pop rdi");
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	mov BYTE PTR [rax], dil");
@@ -98,7 +108,8 @@ void gen(Node *node) {
 		}
 		for(int i=0;i < j-1;i++) {
 			gen(node->stmts[i]);
-			println("	pop rax");
+			if(has_value(node->stmts[i]))
+				println("	pop rax");
 		}
 		gen(node->stmts[j-1]);
 		return ;
@@ -150,11 +161,14 @@ void gen(Node *node) {
 		println("	push %d", size_of(node->lhs->tp));
 		return ;
 	case ND_GVAR:
+		if(node->tp && node->tp->kind == ARRAY) return ;	
 		gen_lval(node);
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
 		else println("	mov rax, [rax]");
 		println("	push rax");
+		return ;
+	case ND_STR:
 		return ;
 	}
 

@@ -83,3 +83,33 @@ int is_function()
 	// "("
 	return (t->kind == TK_RESERVED && t->str[0] == '(');
 }
+
+int has_value(Node *node)
+{
+	switch (node->kind) {
+	case ND_ASSIGN:
+		if (node->lhs->tp &&
+		    node->lhs->tp->kind == ARRAY &&
+		    node->rhs->kind == ND_STR)
+			return 0;
+		return 1;
+	case ND_CALL:
+	case ND_NUM:
+	case ND_LVAR:
+	case ND_GVAR:
+	case ND_ADD:
+	case ND_SUB:
+	case ND_MUL:
+	case ND_DIV:
+	case ND_EQL:
+	case ND_NEQL:
+	case ND_LST:
+	case ND_LSE:
+	case ND_ADDR:
+	case ND_DEREF:
+	case ND_SIZE:
+		return 1;
+	default:
+		return 0;
+	}
+}

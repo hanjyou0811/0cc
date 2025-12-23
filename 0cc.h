@@ -18,6 +18,7 @@ typedef enum {
 	TK_NUM,
         TK_EOF,
         TK_TYPE,
+        TK_STR,
 }       TokenKind;
 typedef struct Token Token;
 struct Token {
@@ -31,6 +32,7 @@ typedef enum {
         INT,
         PTR,
         CHAR,
+        STR,
         ARRAY,
 }       Typename;
 typedef struct Type Type;
@@ -65,6 +67,7 @@ typedef enum {
         ND_DECL,        
         ND_SIZE,        //sizeof x
         ND_GVAR,
+        ND_STR,
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {
@@ -105,6 +108,7 @@ struct Node {
         LVar *params[100];
 
         int val;        //kind == ND_NUM
+        char *str;      //kind == ND_STR
 	int offset;
 	char *func_name;
         char *gvar_name;
@@ -179,5 +183,6 @@ char *strndup(const char *ptr, int len);
 char *strdup(const char *s);
 int size_of(Type *tp);
 int is_function();
+int has_value(Node *node);
 
 #endif

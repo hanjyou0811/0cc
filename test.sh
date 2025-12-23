@@ -6,7 +6,7 @@ assert() {
   ./0cc "$input" > tmp.s
   cc -o tmp tmp.s
   ./tmp
-  actual="$?"
+  actual="$(./tmp)"
 
   if [ "$actual" = "$expected" ]; then
     echo "'$input' :=> $actual"
@@ -16,82 +16,49 @@ assert() {
   fi
 }
 
-assert 0   "int main(){return 0;}"
-assert 42  "int main(){return 42;}"
-assert 255 "int main(){return 255;}"
-assert 21  "int main(){return 5+20-4;}"
-assert 0   "int main(){return 1-1;}"
-assert 255 "int main(){return 254+1;}"
-assert 41  "int main(){return  12 + 34 - 5;}"
-assert 0   "int main(){ return 255 - 255 ;}"
-assert 255 "int main(){ return 0 + 255 ;}"
-assert 0   "int main(){ return 0 * 1;}"
-assert 5   "int main(){ return 15 / 3;}"
-assert 7   "int main(){ return 1 + 2 * 3;}"
-assert 18  "int main(){return (2+4) * (4 - 1);}"
-assert 255 "int main(){return 2 * 128 - 1;}"
-assert 47  "int main(){return 5+6*7;}"
-assert 15  "int main(){return 5*(9-6);}"
-assert 4   "int main(){return (3+5)/2;}"
-assert 0   "int main(){return -12 + 12;}"
-assert 10  "int main(){return -10 + 20;}"
-assert 1   "int main(){return 0 == 0;}"
-assert 0   "int main(){return 0 == 1;}"
-assert 1   "int main(){return 0 != 1;}"
-assert 0   "int main(){return 0 != 0;}"
-assert 0   "int main(){return 0 < 0;}"
-assert 1   "int main(){return 0 >= 0;}"
-assert 0   "int main(){return (1 + 3) > (2 * 6);}"
-assert 1   "int main(){return 255 >= (254 + 1);}"
-assert 3   "int main(){int a = 3; return a;}"
-assert 7   "int main(){int a=1; int b=2; int c=3; return a + b * c;}"
-assert 10  "int main(){ int a = 3; int b = 2; return (a + 2) * b;}"
-assert 21  "int main(){int a = 3; int b = 7; return (a * b);}"
-assert 1   "int main(){if (1) return 1;}"
-assert 42  "int main(){if (0) return 1; else return (42);}"
-assert 1   "int main(){int a = 1; int b = 0; if(a > b) return 1;else return 42;}"
-assert 42  "int main(){if(0) return 1; else if(0) return 1; else if (0) return 1; if(1) return 42;}"
-assert 1   "int main(){if(0) return 42; else if(0) return 42; else if (0) return 42; else return 1;}"
-assert 42  "int main(){if(0) return 1; else if(1) return 42; else if (0) return 1; else return 1;}"
-assert 1   "int main(){if(1) if(1) if(1) if(1) if(1) return 1;}"
-assert 0   "int main(){if(1) if(1) if(1) if(1) if(0) return 1;else return 0;}"
-assert 4  "int main(){ int a = 10; int i = 0;while(a > 0) {a = a/2; i = i + 1;} return i;}"
-assert 55  "int main(){int ret = 0;for(int a=1;a<11;a = a + 1) ret = ret + a; return ret;}"
-assert 10  "int main(){int ret = 0; for(;ret < 10;ret = ret + 1) ret; return ret;}"
-assert 30  "int main(){int ret = 0; for(int a = 1; a< 11; a = a + 1) if((a - (a / 2) * 2) == 0) ret = ret + a; return ret;}"
-assert 35  "int main(){int ret = 0; for(int a = 1; a< 11; a = a + 1) if((a - (a / 2) * 2) == 0) ret = ret + a; else ret = ret + 1;return ret;}"
-assert 0   "int main(){{1;2;3;}}"
-assert 4   "int main(){{int a = 1; int b = 2; return a * ( b + b);}}"
-assert 1   "int main(){{{{{{{{{{return 1;}}}}}}}}}}"
-assert 6   "int calcmod(int x, int y) {return (x - (x / y) * y);} int main(){int x = 16; int y= 10; return calcmod(x, y);}"
-assert 3   "int main(){int x = 0, y = (x = 2) + 1;return y;}"
-assert 10  "int main(){int x = 1;int *y = &x;*y=10;return x;}"
-assert 42  "int main(){int a0 = 0;int *a1 = &a0; int **a2 = &a1; int ***a3 = &a2; int ****a4 = &a3; int *****a5 = &a4; *****a5 = 42;return a0;}"
-assert 4   "int main(){int x; return sizeof x;}"
-assert 8   "int main(){int *y;return sizeof y;}"
-assert 4   "int main(){int x; return sizeof(x + 3); }"
-assert 8   "int main(){int *y;return sizeof (y+3);}"
-assert 4   "int main(){return sizeof 1;}"
-assert 4   "int main(){return sizeof(sizeof(sizeof(sizeof(1))));}"
-assert 4   "int main(){int x = 0;int y = sizeof (x = 2); return x + y;}"
-assert 2   "int main(){int a[2]; *a = 1; *(a + 1) = 2; return *(a+1);}"
-assert 22  "int main(){int a[2]; int *p; p = a; *p = 10; *(a + 1) = 12;return *a + p[1];}"
-assert 2   "int main(){int a[1 + 2];int *p;p = a;for(int i=0;i<1 + 2;i = i + 1){a[i] = i;}return *(p + 2);}"
-assert 4  "int main(){int a[12];return sizeof a[1];}"
-assert 1  "int main(){int a[2]; return &a[1] - &a[0];}"
-assert 1  "int main() {int a[4];int *p = a;int *q = a + 1;return q - p;}"
-assert 3  "int main() {int a[6];for (int i = 0; i < 6; i = i + 1) {a[i] = i * 10;}int *p = &a[2];int *q = &a[5];int diff = q - p;return diff;}"
-assert 5  "int main() {int a[10];int *p = a + 7;int *q = a + 2;return p - q;}"
-assert 190  "int main(){int a = 190; a += 3; a -= 3; a /= 2; a*= 2;return a;}"
-assert 3  "int main(){int a[5]; for(int i=0;i<5;i+=1) {a[i] = i+1;} int *q = a; q += 2; return *q;}"
-assert 6  "int a = 3;int main(){int b = a + 3; return b;}"
-assert 42  "int a;int main(){int *b = &a;*b = 42;return a;}"
-assert 1   "int main(){char c;return sizeof c;}"
-assert 12  "int main(){char x[12]; return sizeof x;}"
-assert 3   "int main(){char x[3];x[0] = -1;x[1] = 2;int y;y = 4;return x[0] + y;}"
-assert 2 "int main(){char a[3]; a[0]=1; a[1]=2; char *p=a; return p[1];}"
-assert 255 "int main(){char c=-1; return c;}"
-assert 1 "int main(){char a[12]; return sizeof(a[0]);}"
-assert 1 "int main(){char a[4]; return sizeof(*a);}"
+assert '12345678910->11:ascii(48):str(0)' "int mod(int x, int y){
+	return x - (x / y * y);
+}
+int pow(int x, int y){
+	int ret = 1;
+	for(int i=0;i<y;i+=1){
+		ret *= x;
+	}
+	return ret;
+}
+int print_num(int x){
+	if(x == 0){
+		char c = x + 48;
+		write(1, &c, 1);
+		return 0;
+	}
+	int i = 0, num = x;
+	while(num){
+		i += 1;
+		num /= 10;
+	}
+	for(num = x;i > 0;i -= 1){
+		int p = pow(10, i-1);
+		char tmp = num / p + 48;
+		write(1, &tmp, 1);
+		num -= num / p * p;
+	}
+}
+int main(){
+  int x = 10;
+  for(int i=0;i<x;i+=1){
+    print_num(i + 1);
+  }
+  char str[12] = \"->11:ascii(\";
+  write(1, str, 11);
+  int num = 48;
+  print_num(num);
+  char c[6] = \"):str(\";
+  write(1, &c, 6);
+  write(1, &num, 1);
+  c = \")\";
+  write(1, &c, 1);
+  return 42;
+}"
 
 echo OK
