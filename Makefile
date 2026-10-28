@@ -13,6 +13,7 @@ test: 0cc
 	./tmp > tmp.out; test $$? -eq 42
 	diff tmp.out test/test.ok
 	sh test/int-width.sh
+	python3 test/literals.py
 
 clean:
 	rm -f 0cc *.o *~ tmp*

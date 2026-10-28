@@ -231,10 +231,15 @@ Type *_typename(Token *tok)
 Node *decl(Type *tp){
 	Token *tok = consume_ident();
 	if(!tok) error_at(token->str, "識別子が来るべきです。");
+	bool infer_size = false;
 	if(consume("[")){
-		Node *len_expr = expr();
-		expect(']');
-		int len = eval_const_expr(len_expr);
+		int len = 0;
+		if (consume("]")) infer_size = true;
+		else {
+			len = eval_const_expr(expr());
+			expect(']');
+			if (len <= 0) error_at(tok->str, "配列サイズは正の整数が必要です。");
+		}
 		Type *arr = new_type(ARRAY, tp);
 		arr->array_size = len;
 		tp = arr;
@@ -244,11 +249,8 @@ Node *decl(Type *tp){
 	LVar *lvar = calloc(1, sizeof(LVar));
 	lvar->name = tok->str;
 	lvar->len = tok->len;
-	lvar->tp	= tp;
-	if(locals)
-		lvar->offset = locals->offset + MAX(size_of(locals->tp), 8);
-	else
-		lvar->offset = MAX(size_of(tp), 8);
+	lvar->tp = tp;
+	lvar->offset = (locals ? locals->offset : 0) + MAX(size_of(tp), 8);
 	lvar->next = locals;
 	locals = lvar;
 
@@ -258,8 +260,25 @@ Node *decl(Type *tp){
 	node->tp = tp;
 	if(consume("=")){
 		node->kind = ND_LVAR;
-		node = new_node(ND_ASSIGN, node, assign());
+		Node *rhs = assign();
+		if (tp->kind == ARRAY) {
+			if (tp->ptr_to->kind != CHAR || rhs->kind != ND_STR)
+				error_at(tok->str, "配列の初期化には文字配列と文字列が必要です。");
+			if (infer_size) {
+				tp->array_size = rhs->val;
+				lvar->offset = (lvar->next ? lvar->next->offset : 0) + MAX(size_of(tp), 8);
+				node->offset = lvar->offset;
+			}
+			// C permits an exact fit without the terminating NUL.
+			if (rhs->val - 1 > tp->array_size)
+				error_at(tok->str, "文字列が配列の初期化サイズを超えています。");
+			node = new_node(ND_ARRAY_INIT, node, rhs);
+		} else {
+			node = new_node(ND_ASSIGN, node, rhs);
+		}
 		node->tp = tp;
+	} else if (infer_size) {
+		error_at(tok->str, "配列サイズの省略には初期化が必要です。");
 	}
 	return node;
 }
@@ -275,6 +294,8 @@ Node *expr() {
 Node *assign() {
 	Node *node = equality();
 	if(consume("=")) {
+		if (node->tp && node->tp->kind == ARRAY)
+			error_at(token->str, "配列には代入できません。");
 		node = new_node(ND_ASSIGN, node, assign());
 		node->tp = node->lhs->tp;
 	}
@@ -410,7 +431,7 @@ Node *unary() {
 	return primary();
 }
 
-Node *primary() {
+static Node *primary_atom() {
     Node *node;
 	if(consume("(")) {
 		node = expr();
@@ -456,28 +477,44 @@ Node *primary() {
 			// node->offset = lvar->offset;
 			// locals = lvar;
 		}
-		if(consume("[")) {
-			Node *len_expr = expr();
-			expect(']');
-			node = new_node(ND_DEREF, new_add(node, len_expr), NULL);
-			node->tp = node->lhs->tp->ptr_to;
-		}
+
 		return node;
 	}
 	else {
 		tok = consume_kind(TK_STR);
 		if(tok) {
-			// printf("%s", tok->str);
 			node = calloc(1, sizeof(Node));
-			node->str = tok->str;
-			node->val = tok->len + 1; // ヌル文字分
-			node->tp = new_type(STR, NULL);
+			node->str = tok->contents;
+			node->val = tok->len + 1;
+			while (token->kind == TK_STR) {
+				Token *next = consume_kind(TK_STR);
+				char *joined = calloc(node->val + next->len, 1);
+				memcpy(joined, node->str, node->val - 1);
+				memcpy(joined + node->val - 1, next->contents, next->len);
+				node->str = joined;
+				node->val += next->len;
+			}
+			node->tp = new_type(ARRAY, new_type(CHAR, NULL));
+			node->tp->array_size = node->val;
 			node->kind = ND_STR;
 			return node;
 		}
 		node = new_node_num(expect_number());
     }
     return node;
+}
+
+Node *primary() {
+	Node *node = primary_atom();
+	while (consume("[")) {
+		Node *index = expr();
+		expect(']');
+		if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
+			error_at(token->str, "添字には配列かポインタが必要です。");
+		node = new_node(ND_DEREF, new_add(node, index), NULL);
+		node->tp = node->lhs->tp->ptr_to;
+	}
+	return node;
 }
 
 LVar *find_lvar(Token *tok) {
@@ -600,6 +637,77 @@ Token *new_token(TokenKind kind, Token *cur, char *str) {
         return tok;
 }
 
+static int read_escape(char **rest) {
+	char *p = *rest;
+	char *start = p;
+	int value = 0;
+	if ('0' <= *p && *p <= '7') {
+		for (int i = 0; i < 3 && '0' <= *p && *p <= '7'; i++)
+			value = value * 8 + (*p++ - '0');
+	} else if (*p == 'x') {
+		p++;
+		if (!isxdigit((unsigned char)*p))
+			error_at(start, "16進エスケープには数字が必要です。");
+		while (isxdigit((unsigned char)*p)) {
+			int digit = isdigit((unsigned char)*p) ? *p - '0' : tolower((unsigned char)*p) - 'a' + 10;
+			value = value * 16 + digit;
+			if (value > 255) error_at(start, "エスケープが1バイトの範囲を超えています。");
+			p++;
+		}
+	} else {
+		switch (*p++) {
+		case 'a': value = 7; break;
+		case 'b': value = 8; break;
+		case 't': value = 9; break;
+		case 'n': value = 10; break;
+		case 'v': value = 11; break;
+		case 'f': value = 12; break;
+		case 'r': value = 13; break;
+		case '\\': value = '\\'; break;
+		case '\'': value = '\''; break;
+		case '"': value = '"'; break;
+		case '?': value = '?'; break;
+		default: error_at(start, "不正なエスケープです。");
+		}
+	}
+	if (value > 255) error_at(start, "エスケープが1バイトの範囲を超えています。");
+	*rest = p;
+	return value;
+}
+
+static Token *read_literal(Token *cur, char **rest) {
+	char *start = *rest;
+	char quote = *start;
+	char *end = start + 1;
+	for (; *end && *end != '\n' && *end != quote; end++) {
+		if (*end == '\\') {
+			end++;
+			if (!*end || *end == '\n') break;
+		}
+	}
+	if (*end != quote)
+		error_at(start, "文字・文字列リテラルが閉じていません。");
+	char *contents = calloc(end - start, 1);
+	int len = 0;
+	char *p = start + 1;
+	while (p < end) {
+		if (*p == '\\') {
+			p++;
+			contents[len++] = read_escape(&p);
+		} else {
+			contents[len++] = *p++;
+		}
+	}
+	if (quote == '\'' && len != 1)
+		error_at(start, "文字リテラルには1文字が必要です。");
+	cur = new_token(quote == '\'' ? TK_NUM : TK_STR, cur, start);
+	cur->len = len;
+	cur->contents = contents;
+	if (quote == '\'') cur->val = (signed char)contents[0];
+	*rest = end + 1;
+	return cur;
+}
+
 void tokenize(char *p) {
     Token head;
 	head.next = NULL;
@@ -708,20 +816,8 @@ void tokenize(char *p) {
 			cur->len = sprintf(buffer, "%d", cur->val);
 			continue;
 		}
-		if (*p == '"') {
-			int i = 1;
-			while (*(p + i) != '"' && *(p + i) != '\0') {
-				i++;
-			}
-			if (*(p + i) == '"') {
-				i++; 
-			} else {
-				error_at(p, "文字列リテラルが閉じていません");
-			}
-			cur = new_token(TK_STR, cur, p);
-			cur->str = strndup(p+1, i-2);
-			cur->len = i-2;
-			p += i;
+		if (*p == '"' || *p == '\'') {
+			cur = read_literal(cur, &p);
 			continue;
 		}
         error_at(p, "トークナイズできません");
