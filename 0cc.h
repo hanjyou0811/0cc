@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
+#include <errno.h>
 
 #define MAX(x, y) ((x) < (y) ? (y) : (x))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -184,5 +185,6 @@ char *strdup(const char *s);
 int size_of(Type *tp);
 int is_function();
 int has_value(Node *node);
+char *read_file(char *path);
 
 #endif

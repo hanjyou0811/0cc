@@ -8,7 +8,10 @@ OBJS=$(SRCS:.c=.o)
 $(OBJS): 0cc.h
 
 test: 0cc
-	./test.sh
+	./0cc test/test.c > tmp.s
+	cc -o tmp tmp.s
+	./tmp > tmp.out; test $$? -eq 42
+	diff tmp.out test/test.ok
 
 clean:
 	rm -f 0cc *.o *~ tmp*

@@ -16,9 +16,9 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	user_input = argv[1];
+	user_input = read_file(argv[1]);
         
-	tokenize(argv[1]);
+	tokenize(user_input);
 	locals = NULL;
 	program();
 	
