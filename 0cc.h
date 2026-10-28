@@ -28,6 +28,7 @@ struct Token {
         int val;
         char *str;
         int len;
+        char *contents; // decoded bytes for TK_STR (may contain NUL)
 };
 typedef enum {
         INT,
@@ -69,6 +70,7 @@ typedef enum {
         ND_SIZE,        //sizeof x
         ND_GVAR,
         ND_STR,
+        ND_ARRAY_INIT,
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {

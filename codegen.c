@@ -15,6 +15,9 @@ void gen_lval(Node *node) {
 	case ND_DEREF:
 		gen(node->lhs);
 		return ;
+	case ND_STR:
+		gen(node);
+		return ;
 	}
 	error("代入の左辺値が変数でもポインタでもありません。");
 }
@@ -34,18 +37,16 @@ void gen(Node *node) {
 		else println("	mov rax, [rax]");
 		println("	push rax");
 		return ;
-	case ND_ASSIGN:
-		// 文字列を代入したときの生成がよくわからない
+	case ND_ARRAY_INIT:
 		gen_lval(node->lhs);
-		if(node->rhs->tp && node->rhs->tp->kind == STR) {
-			println("	pop rax");
-			int size_ = node->rhs->val;
-			for(int i=0; i < size_;i++){
-				char c = (i < size_) ? node->rhs->str[i] : 0;
-				println("	mov byte ptr [rax + %d], %d", i, c);
-			}
-			return ;
+		println("	pop rax");
+		for (size_t i = 0; i < node->tp->array_size; i++) {
+			int byte = i < node->rhs->val ? (unsigned char)node->rhs->str[i] : 0;
+			println("	mov BYTE PTR [rax + %zu], %d", i, byte);
 		}
+		return ;
+	case ND_ASSIGN:
+		gen_lval(node->lhs);
 		gen(node->rhs);
 		println("	pop rdi");
 		println("	pop rax");
@@ -159,6 +160,7 @@ void gen(Node *node) {
 		return ;
 	case ND_DEREF:
 		gen(node->lhs);
+		if (node->tp && node->tp->kind == ARRAY) return ;
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
 		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
@@ -179,8 +181,17 @@ void gen(Node *node) {
 		else println("	mov rax, [rax]");
 		println("	push rax");
 		return ;
-	case ND_STR:
+	case ND_STR: {
+		int string_id = lavel_id++;
+		println(".pushsection .rodata");
+		println(".Lstr%03d:", string_id);
+		for (int i = 0; i < node->val; i++)
+			println("	.byte %u", (unsigned char)node->str[i]);
+		println(".popsection");
+		println("	lea rax, [rip + .Lstr%03d]", string_id);
+		println("	push rax");
 		return ;
+	}
 	}
 
 	gen(node->lhs);

@@ -114,11 +114,8 @@ int has_value(Node *node)
 {
 	switch (node->kind) {
 	case ND_ASSIGN:
-		if (node->lhs->tp &&
-		    node->lhs->tp->kind == ARRAY &&
-		    node->rhs->kind == ND_STR)
-			return 0;
 		return 1;
+	case ND_STR:
 	case ND_CALL:
 	case ND_NUM:
 	case ND_LVAR:
