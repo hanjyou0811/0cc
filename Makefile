@@ -12,6 +12,7 @@ test: 0cc
 	cc -o tmp tmp.s
 	./tmp > tmp.out; test $$? -eq 42
 	diff tmp.out test/test.ok
+	sh test/int-width.sh
 
 clean:
 	rm -f 0cc *.o *~ tmp*
