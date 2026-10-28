@@ -19,7 +19,8 @@ int is_alnum(char c)
 }
 
 int is_type(char *ident){
-	return (!memcmp(ident, "int", 3) || !memcmp(ident, "char", 4));
+    return strcmp(ident, "int") == 0 ||
+           strcmp(ident, "char") == 0;
 }
 
 int match_token(char *str, char *tgt)

@@ -644,14 +644,16 @@ void tokenize(char *p) {
 			cur->len = 1;
 			continue;
 		}
-		if ('a' <= *p && *p <= 'z' || (*p == '_')) {
+		if ('a' <= *p && *p <= 'z' ||
+			'A' <= *p && *p <= 'Z' ||
+			(*p == '_')) {
 			int i = 0;
 			while(is_alnum(p[i])) {
 				i++;
 			}
 			char *ident = strndup(p, i);
 			if(is_type(ident)) cur = new_token(TK_TYPE, cur, p);
-			else if(!memcmp(ident, "sizeof", 6)) cur = new_token(TK_RESERVED, cur, p);
+			else if (strcmp(ident, "sizeof") == 0) cur = new_token(TK_RESERVED, cur, p);
 			else cur = new_token(TK_IDENT, cur, p);
 			cur->len = i;
 			p = p + i;
