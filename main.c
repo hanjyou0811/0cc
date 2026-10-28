@@ -1,6 +1,7 @@
 #include "0cc.h"
 
 char *user_input;
+char *filename;
 Token *token;
 LVar *locals = NULL;
 GVar *globals = NULL;
@@ -16,7 +17,8 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	user_input = read_file(argv[1]);
+	filename = argv[1];
+	user_input = read_file(filename);
         
 	tokenize(user_input);
 	locals = NULL;

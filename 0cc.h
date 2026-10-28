@@ -163,6 +163,7 @@ void gen_gval();
 
 extern Token *token;
 extern char *user_input;
+extern char *filename;
 extern Node *code[100];
 extern LVar *locals;
 extern GVar *globals;
