@@ -30,6 +30,7 @@ void gen(Node *node) {
 		if(node->tp && node->tp->kind == ARRAY) return ;
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
+		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
 		else println("	mov rax, [rax]");
 		println("	push rax");
 		return ;
@@ -49,6 +50,10 @@ void gen(Node *node) {
 		println("	pop rdi");
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	mov BYTE PTR [rax], dil");
+		else if(node->tp && node->tp->kind == INT) {
+			println("	mov DWORD PTR [rax], edi");
+			println("	movsxd rdi, edi");
+		}
 		else println("	mov [rax], rdi");
 		println("	push rdi");
 		return ;
@@ -133,9 +138,13 @@ void gen(Node *node) {
 		println("	mov rbp, rsp");
 		println("	sub rsp, %d", 208);
 		for (int i = 0; i < node->argc; i++) {
-			println("	mov [rbp-%d], %s",
-					node->params[i]->offset,
-					arg_addr[i]);
+			const char *int_args[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+			if (node->params[i]->tp->kind == INT)
+				println("	mov DWORD PTR [rbp-%d], %s",
+					node->params[i]->offset, int_args[i]);
+			else
+				println("	mov [rbp-%d], %s",
+					node->params[i]->offset, arg_addr[i]);
 		}
 		gen(node->body);
 		if (strcmp(node->func_name, "main") == 0) {
@@ -152,6 +161,7 @@ void gen(Node *node) {
 		gen(node->lhs);
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
+		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
 		else println("	mov rax, [rax]");
 		println("	push rax");
 		return;
@@ -165,6 +175,7 @@ void gen(Node *node) {
 		gen_lval(node);
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
+		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
 		else println("	mov rax, [rax]");
 		println("	push rax");
 		return ;
