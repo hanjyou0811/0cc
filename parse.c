@@ -355,7 +355,7 @@ Node *new_add(Node *lhs, Node *rhs)
 		{
 			int size = size_of(lhs->tp->ptr_to);
 			Node *mul = new_node(ND_MUL, rhs, new_node_num(size));
-			mul->tp = INT;
+			mul->tp = new_type(INT, NULL);
 			node->rhs = mul;
 			node->tp = lhs->tp;
 			return node;
@@ -373,14 +373,15 @@ Node *new_sub(Node *lhs, Node *rhs)
 		{
 			int size = size_of(lhs->tp->ptr_to);
 			rhs = new_node(ND_MUL, rhs, new_node_num(size));
-			rhs->tp = INT;
+			rhs->tp = new_type(INT, NULL);
 			node->rhs = rhs;
 			node->tp = lhs->tp;
 			return node;
 		}
 		if((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY)) {
+			node->tp = new_type(INT, NULL);
 			Node *div = new_node(ND_DIV, node, new_node_num(size_of(lhs->tp->ptr_to)));
-			div->tp = INT;
+			div->tp = new_type(INT, NULL);
 			return div;
 		}
 	}
