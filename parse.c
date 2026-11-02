@@ -287,6 +287,9 @@ Node *expr() {
 	Node *node = assign();
 	while (consume(",")) {
 		node = new_node(ND_COMMA, node, assign());
+		node->tp = node->rhs->tp;
+		if (node->tp && node->tp->kind == ARRAY)
+			node->tp = new_type(PTR, node->tp->ptr_to);
 	}
     return node;
 }
