@@ -1,4 +1,5 @@
 #include "0cc.h"
+#include <limits.h>
 
 Node *code[100];
 
@@ -198,11 +199,24 @@ void global_decl()
 void decl_global(Type *ty)
 {
 	Token *tok = consume_ident();
+	if (!tok) error_at(token->str, "識別子が来るべきです。");
+	if (consume("[")) {
+		int len = eval_const_expr(expr());
+		expect(']');
+		if (len <= 0) error_at(tok->str, "配列サイズは正の整数が必要です。");
+		if (len > INT_MAX / size_of(ty))
+			error_at(tok->str, "配列のサイズが大きすぎます。");
+		Type *arr = new_type(ARRAY, ty);
+		arr->array_size = len;
+		ty = arr;
+	}
 	GVar *gvar = calloc(1, sizeof(GVar));
 	gvar->name = strndup(tok->str, tok->len);
 	gvar->len  = tok->len;
 	gvar->tp   = ty;
 	if(consume("=")) {
+		if (ty->kind == ARRAY)
+			error_at(tok->str, "グローバル配列の初期化にはまだ対応していません。");
 		Node *node = expr();
 		gvar->val = eval_const_expr(node);
 	}
