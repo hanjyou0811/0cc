@@ -247,11 +247,19 @@ void gen_gval()
 	GVar *gvar = globals;
 	while(gvar)
 	{
+		Type *element = gvar->tp;
+		while(element->kind == ARRAY)
+			element = element->ptr_to;
+		println("\t.balign %d", size_of(element));
 		println("%s:", gvar->name);
-		if(gvar->val)
-			println("	.long %d", gvar->val);
+		if(!gvar->val)
+			println("\t.zero %d", size_of(gvar->tp));
+		else if(gvar->tp->kind == CHAR)
+			println("\t.byte %d", (unsigned char)gvar->val);
+		else if(gvar->tp->kind == INT)
+			println("\t.long %d", gvar->val);
 		else
-			println("	.zero");
+			println("\t.quad %d", gvar->val);
 		gvar = gvar->next;
 	}
 }
