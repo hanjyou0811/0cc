@@ -28,6 +28,11 @@ void gen(Node *node) {
 	case ND_NUM:
 		println("	push %d", node->val);
 		return ;
+	case ND_COMMA:
+		gen(node->lhs);
+		println("\tpop rax");
+		gen(node->rhs);
+		return ;
 	case ND_LVAR:
 		gen_lval(node);
 		if(node->tp && node->tp->kind == ARRAY) return ;

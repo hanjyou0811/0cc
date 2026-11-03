@@ -116,6 +116,7 @@ int has_value(Node *node)
 	case ND_ASSIGN:
 		return 1;
 	case ND_STR:
+	case ND_COMMA:
 	case ND_CALL:
 	case ND_NUM:
 	case ND_LVAR:
