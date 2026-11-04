@@ -72,6 +72,9 @@ typedef enum {
         ND_GVAR,
         ND_STR,
         ND_ARRAY_INIT,
+        ND_NOT,
+        ND_LOGAND,
+        ND_LOGOR,
 }       NodeKind;
 typedef struct LVar LVar;
 struct LVar {
@@ -145,6 +148,8 @@ Node *block();
 Node *assign();
 Node *expr();
 Node *stmt();
+Node *logical_or();
+Node *logical_and();
 Node *equality();
 Node *relational();
 Node *add();

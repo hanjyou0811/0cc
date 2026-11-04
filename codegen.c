@@ -27,6 +27,34 @@ void gen(Node *node) {
 	switch (node->kind) {
 	case ND_NOP:
 		return;
+	case ND_NOT:
+		gen(node->lhs);
+		println("\tpop rax");
+		println("\tcmp rax, 0");
+		println("\tsete al");
+		println("\tmovzx rax, al");
+		println("\tpush rax");
+		return;
+	case ND_LOGAND:
+	case ND_LOGOR: {
+		int logical_id = lavel_id++;
+		gen(node->lhs);
+		println("\tpop rax");
+		println("\tcmp rax, 0");
+		println("\t%s .Llogical_short%03d",
+			node->kind == ND_LOGAND ? "je" : "jne", logical_id);
+		gen(node->rhs);
+		println("\tpop rax");
+		println("\tcmp rax, 0");
+		println("\tsetne al");
+		println("\tmovzx rax, al");
+		println("\tjmp .Llogical_end%03d", logical_id);
+		println(".Llogical_short%03d:", logical_id);
+		println("\tmov rax, %d", node->kind == ND_LOGOR);
+		println(".Llogical_end%03d:", logical_id);
+		println("\tpush rax");
+		return;
+	}
 	case ND_NUM:
 		println("	push %d", node->val);
 		return ;

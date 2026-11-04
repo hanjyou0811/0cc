@@ -132,6 +132,9 @@ int has_value(Node *node)
 	case ND_ADDR:
 	case ND_DEREF:
 	case ND_SIZE:
+	case ND_NOT:
+	case ND_LOGAND:
+	case ND_LOGOR:
 		return 1;
 	default:
 		return 0;
