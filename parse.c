@@ -360,19 +360,15 @@ void decl_global(Type *ty)
 	Token *tok = NULL;
 	ty = declaration_type(ty, &tok);
     if (ty->kind == VOID) error_at(tok->str, "void object");
-    size_of(ty);
 	GVar *gvar = calloc(1, sizeof(GVar));
 	declare_name(tok);
 	gvar->name = strndup(tok->str, tok->len);
 	gvar->len  = tok->len;
 	gvar->tp   = ty;
-	if(consume("=")) {
-		if (ty->kind == STRUCT || ty->kind == ARRAY) error_at(tok->str, "aggregate global initializer unsupported");
-        Node *node = assign();
-		gvar->val = eval_const_expr(node);
-	}
 	gvar->next = globals;
 	globals = gvar;
+	if (consume("=")) global_initializer(gvar);
+	size_of(gvar->tp);
 }
 
 Type *_typename(Token *tok) {

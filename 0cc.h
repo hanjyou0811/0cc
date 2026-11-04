@@ -122,6 +122,13 @@ VarScope *declare_name(Token *tok);
 bool is_typename(Token *tok);
 
 typedef struct GVar GVar;
+typedef struct Relocation Relocation;
+struct Relocation {
+        Relocation *next;
+        int offset;
+        char *symbol;
+        long long addend;
+};
 struct GVar {
         GVar *next;
 
@@ -129,8 +136,9 @@ struct GVar {
         int len;
         Type *tp;
         
-        int val;        // int
-        int *arr;       // arr
+        bool has_initializer;
+        unsigned char *init_data;
+        Relocation *relocations;
 };
 typedef struct Node Node;
 struct Node {
@@ -204,6 +212,9 @@ Type *new_type(Typename typename, Type *next);
 
 void gen(Node *node);
 void gen_gval();
+void global_initializer(GVar *var);
+void gen_global_variable(GVar *var);
+void gen_initializer_strings(void);
 
 extern Token *token;
 extern char *user_input;
