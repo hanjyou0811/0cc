@@ -1,6 +1,7 @@
 #include "0cc.h"
 
-static int loop_id = -1;
+static int break_id = -1;
+static int continue_id = -1;
 
 static void gen_stmt(Node *node) {
 	if (!node) return;
@@ -157,10 +158,10 @@ void gen(Node *node) {
 		gen_update(node);
 		return ;
 	case ND_BREAK:
-		println("\tjmp .Lend%03d", loop_id);
+		println("\tjmp .Lend%03d", break_id);
 		return;
 	case ND_CONTINUE:
-		println("\tjmp .Lcontinue%03d", loop_id);
+		println("\tjmp .Lcontinue%03d", continue_id);
 		return;
 	case ND_DEF:
 		gen_stmt(node->lhs);
@@ -195,8 +196,9 @@ void gen(Node *node) {
 		return ;
 	case ND_WHILE: {
 		int id = lavel_id++;
-		int outer_loop = loop_id;
-		loop_id = id;
+		int outer_break = break_id;
+		int outer_continue = continue_id;
+		break_id = continue_id = id;
 		println(".Lbegin%03d:", id);
 		println(".Lcontinue%03d:", id);
 		gen(node->cond);
@@ -206,13 +208,15 @@ void gen(Node *node) {
 		gen_stmt(node->then);
 		println("	jmp .Lbegin%03d", id);
 		println(".Lend%03d:", id);
-		loop_id = outer_loop;
+		break_id = outer_break;
+		continue_id = outer_continue;
 		return ;
 	}
 	case ND_FOR: {
 		int id = lavel_id++;
-		int outer_loop = loop_id;
-		loop_id = id;
+		int outer_break = break_id;
+		int outer_continue = continue_id;
+		break_id = continue_id = id;
 		gen_stmt(node->init);
 		println(".Lbegin%03d:", id);
 		if (node->cond) {
@@ -226,9 +230,36 @@ void gen(Node *node) {
 		gen_stmt(node->inc);
 		println("	jmp .Lbegin%03d", id);
 		println(".Lend%03d:", id);
-		loop_id = outer_loop;
+		break_id = outer_break;
+		continue_id = outer_continue;
 		return ;
 	}
+	case ND_SWITCH: {
+		int id = lavel_id++;
+		int outer_break = break_id;
+		break_id = id;
+		gen(node->cond);
+		println("\tpop rax");
+		for (Node *c = node->cases; c; c = c->case_next) {
+			c->label_id = lavel_id++;
+			println("\tcmp eax, %d", c->val);
+			println("\tje .Lcase%03d", c->label_id);
+		}
+		if (node->default_case) {
+			node->default_case->label_id = lavel_id++;
+			println("\tjmp .Lcase%03d", node->default_case->label_id);
+		} else {
+			println("\tjmp .Lend%03d", id);
+		}
+		gen_stmt(node->body);
+		println(".Lend%03d:", id);
+		break_id = outer_break;
+		return;
+	}
+	case ND_CASE:
+		println(".Lcase%03d:", node->label_id);
+		gen_stmt(node->body);
+		return;
 	case ND_BLOCK:
 		for (int i = 0; node->stmts[i]; i++)
 			gen_stmt(node->stmts[i]);

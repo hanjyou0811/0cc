@@ -3,6 +3,7 @@
 
 Node *code[100];
 static int loop_depth;
+static Node *current_switch;
 static Type *return_type;
 static Node *current_function;
 
@@ -63,25 +64,60 @@ Type *new_type(Typename typename, Type *next)
 	return tp;
 }
 
-int eval_const_expr(Node *node) {
+// Validate both operands even when evaluation will short-circuit.
+static void require_case_constant(Node *node) {
     switch (node->kind) {
-    case ND_NUM:
-        return node->val;
-    case ND_ADD:
-        return eval_const_expr(node->lhs)
-             + eval_const_expr(node->rhs);
-    case ND_SUB:
-        return eval_const_expr(node->lhs)
-             - eval_const_expr(node->rhs);
-    case ND_MUL:
-        return eval_const_expr(node->lhs)
-             * eval_const_expr(node->rhs);
-    case ND_DIV:
-        return eval_const_expr(node->lhs)
-             / eval_const_expr(node->rhs);
+    case ND_NUM: case ND_SIZE:
+        return;
+    case ND_NOT:
+        require_case_constant(node->lhs);
+        return;
+    case ND_ADD: case ND_SUB: case ND_MUL: case ND_DIV:
+    case ND_EQL: case ND_NEQL: case ND_LST: case ND_LSE:
+    case ND_LOGAND: case ND_LOGOR:
+        require_case_constant(node->lhs);
+        require_case_constant(node->rhs);
+        return;
     default:
-        error_at(token->str, "配列サイズは定数の式である必要があります");
+        error_at(token->str, "integer constant expression required for case");
     }
+}
+
+int eval_const_expr(Node *node) {
+    long long lhs, rhs, result;
+    switch (node->kind) {
+    case ND_NUM: return node->val;
+    case ND_SIZE: return size_of(node->lhs->tp);
+    case ND_NOT: return !eval_const_expr(node->lhs);
+    case ND_LOGAND:
+        lhs = eval_const_expr(node->lhs);
+        return lhs && eval_const_expr(node->rhs);
+    case ND_LOGOR:
+        lhs = eval_const_expr(node->lhs);
+        return lhs || eval_const_expr(node->rhs);
+    case ND_ADD: case ND_SUB: case ND_MUL: case ND_DIV:
+    case ND_EQL: case ND_NEQL: case ND_LST: case ND_LSE:
+        lhs = eval_const_expr(node->lhs);
+        rhs = eval_const_expr(node->rhs);
+        switch (node->kind) {
+        case ND_ADD: result = lhs + rhs; break;
+        case ND_SUB: result = lhs - rhs; break;
+        case ND_MUL: result = lhs * rhs; break;
+        case ND_DIV:
+            if (!rhs) error_at(token->str, "division by zero in constant expression");
+            result = lhs / rhs; break;
+        case ND_EQL: return lhs == rhs;
+        case ND_NEQL: return lhs != rhs;
+        case ND_LST: return lhs < rhs;
+        default: return lhs <= rhs;
+        }
+        if (result < INT_MIN || result > INT_MAX)
+            error_at(token->str, "integer constant expression overflow");
+        return result;
+    default:
+        error_at(token->str, "integer constant expression required");
+    }
+    return 0;
 }
 
 void program() {
@@ -139,8 +175,45 @@ Node *stmt() {
 	Node *node;
 	if (consume(";")) return new_node(ND_NOP, NULL, NULL);
 	Token *start = token;
+	if (consume("switch")) {
+		node = new_node(ND_SWITCH, NULL, NULL);
+		expect('(');
+		node->cond = expr();
+		expect(')');
+		if (!node->cond->tp || (node->cond->tp->kind != INT && node->cond->tp->kind != CHAR))
+			error_at(start->str, "switch requires an integer expression");
+		Node *outer = current_switch;
+		current_switch = node;
+		node->body = stmt();
+		current_switch = outer;
+		return node;
+	}
+	if (consume("case")) {
+		if (!current_switch) error_at(start->str, "case requires a switch");
+		node = new_node(ND_CASE, NULL, NULL);
+		Node *value = logical_or();
+		require_case_constant(value);
+		node->val = eval_const_expr(value);
+		expect(':');
+		for (Node *c = current_switch->cases; c; c = c->case_next)
+			if (c->val == node->val) error_at(start->str, "duplicate case value");
+		node->case_next = current_switch->cases;
+		current_switch->cases = node;
+		node->body = stmt();
+		return node;
+	}
+	if (consume("default")) {
+		if (!current_switch) error_at(start->str, "default requires a switch");
+		if (current_switch->default_case) error_at(start->str, "duplicate default label");
+		expect(':');
+		node = new_node(ND_CASE, NULL, NULL);
+		current_switch->default_case = node;
+		node->body = stmt();
+		return node;
+	}
 	if (consume("break")) {
-		if (!loop_depth) error_at(start->str, "breakはループ内でのみ使えます。");
+		if (!loop_depth && !current_switch)
+			error_at(start->str, "breakはループまたはswitch内でのみ使えます。");
 		expect(';');
 		return new_node(ND_BREAK, NULL, NULL);
 	}
@@ -840,6 +913,13 @@ void tokenize(char *p) {
 			p++;
 			continue;
         }
+		if (match_token(p, "switch") || match_token(p, "case") || match_token(p, "default")) {
+			int len = match_token(p, "switch") ? 6 : match_token(p, "case") ? 4 : 7;
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = len;
+			p += len;
+			continue;
+		}
 		if (match_token(p, "return")) {
 			cur = new_token(TK_RESERVED, cur, p);
 			cur->len = 6;
@@ -931,7 +1011,7 @@ void tokenize(char *p) {
 			cur->len = 1;
 			continue;
 		}
-		if (*p == ';' || *p == ',') {
+		if (*p == ';' || *p == ',' || *p == ':') {
 			cur = new_token(TK_RESERVED, cur, p++);
 			cur->len = 1;
 			continue;

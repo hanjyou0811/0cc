@@ -73,6 +73,8 @@ typedef enum {
         ND_NOP,         // empty statement
         ND_BREAK,
         ND_CONTINUE,
+        ND_SWITCH,
+        ND_CASE,
 	ND_CALL,        // call function
         ND_FUNC,	// func def
 	ND_ADDR,	// &x
@@ -124,6 +126,11 @@ struct Node {
 	Node *call_args[100];
 
         LVar *params[100];
+
+        Node *cases;     // ND_SWITCH: linked case labels
+        Node *default_case;
+        Node *case_next;
+        int label_id;    // ND_CASE: code generation label
 
         int val;        //kind == ND_NUM
         char *str;      //kind == ND_STR
