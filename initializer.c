@@ -37,6 +37,23 @@ static Initializer *read_initializer(Type *tp, bool elided) {
     Initializer *init = calloc(1, sizeof(Initializer));
     init->tp = tp;
     bool braces = consume("{");
+    if (tp->kind == STRUCT) {
+        size_of(tp);
+        if (!braces && !elided)
+            error_at(token->str, "struct initializer requires braces");
+        for (Member *member = tp->members; member && !at_close(); member = member->next) {
+            if (init->count && !consume(",")) break;
+            if (at_close()) break;
+            init->children = realloc(init->children, (init->count + 1) * sizeof(Initializer *));
+            init->children[init->count++] = read_initializer(member->tp, true);
+        }
+        if (braces) {
+            consume(",");
+            if (!at_close()) error_at(token->str, "excess struct initializer");
+            expect('}');
+        }
+        return init;
+    }
     if (tp->kind != ARRAY) {
         if (tp->kind != CHAR && tp->kind != INT && tp->kind != PTR)
             error_at(token->str, "unsupported global initializer type");
@@ -172,6 +189,12 @@ static InitValue constant(Node *node) {
 }
 
 static void write_initializer(GVar *var, Initializer *init, int offset) {
+    if (init->tp->kind == STRUCT) {
+        Member *member = init->tp->members;
+        for (size_t i = 0; i < init->count; i++, member = member->next)
+            write_initializer(var, init->children[i], offset + member->offset);
+        return;
+    }
     if (init->tp->kind == ARRAY) {
         if (init->expr) {
             int size = MIN(init->expr->val, size_of(init->tp));
