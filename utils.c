@@ -77,20 +77,12 @@ int size_of(Type *tp) {
     }
 }
 
-int is_function()
-{
-	// func := type ident "(" ...
-	Token *t = token;
-	// type
-	if(t->kind != TK_TYPE) return false;
-	t = t->next;
-	while (t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '*')
-		t = t->next;
-	// ident
-	if(t->kind != TK_IDENT) return false;
-	t = t->next;
-	// "("
-	return (t->kind == TK_RESERVED && t->str[0] == '(');
+int is_function() {
+    if (!is_typename(token)) return false;
+    Token *saved = token, *name = NULL;
+    Type *base = declspec(); declarator(base, &name);
+    bool result = token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(';
+    token = saved; return result;
 }
 
 char *read_file(char *path) {

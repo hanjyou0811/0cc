@@ -95,6 +95,17 @@ struct LVar {
 	int offset;
         Type *tp;
 };
+typedef struct VarScope VarScope;
+struct VarScope { VarScope *next; Token *name; Type *typedef_type; LVar *var; };
+typedef struct Scope Scope;
+struct Scope { Scope *next; VarScope *vars; void *tags; };
+extern Scope *scope;
+void enter_scope(void);
+void leave_scope(void);
+VarScope *find_name(Token *tok);
+VarScope *declare_name(Token *tok);
+bool is_typename(Token *tok);
+
 typedef struct GVar GVar;
 struct GVar {
         GVar *next;

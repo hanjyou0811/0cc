@@ -6,6 +6,42 @@ static int loop_depth;
 static Type *return_type;
 static Node *current_function;
 
+Scope *scope;
+static bool function_body;
+void enter_scope(void) { Scope *s = calloc(1, sizeof(Scope)); s->next = scope; scope = s; }
+void leave_scope(void) { scope = scope->next; }
+static bool same_name(Token *a, Token *b) { return a->len == b->len && !memcmp(a->str, b->str, a->len); }
+VarScope *find_name(Token *tok) {
+    for (Scope *s = scope; s; s = s->next)
+        for (VarScope *v = s->vars; v; v = v->next)
+            if (same_name(v->name, tok)) return v;
+    return NULL;
+}
+VarScope *declare_name(Token *tok) {
+    for (VarScope *v = scope->vars; v; v = v->next)
+        if (same_name(v->name, tok)) error_at(tok->str, "duplicate declaration");
+    VarScope *v = calloc(1, sizeof(VarScope)); v->name = tok; v->next = scope->vars; scope->vars = v; return v;
+}
+bool is_typename(Token *tok) {
+    if (tok->kind == TK_TYPE) return true;
+    VarScope *v = tok->kind == TK_IDENT ? find_name(tok) : NULL;
+    return v && v->typedef_type;
+}
+static Node *typedef_decl(void) {
+    Type *base = declspec();
+    do {
+        Token *name = NULL; Type *tp = declarator(base, &name);
+        VarScope *existing = NULL;
+        for (VarScope *v = scope->vars; v; v = v->next)
+            if (same_name(v->name, name)) { existing = v; break; }
+        if (existing) {
+            if (!existing->typedef_type || !compatible_type(existing->typedef_type, tp))
+                error_at(name->str, "incompatible typedef redeclaration");
+        } else declare_name(name)->typedef_type = tp;
+    } while (consume(","));
+    expect(';'); return new_node(ND_NOP, NULL, NULL);
+}
+
 static int local_offset(Type *tp, int previous, Token *tok) {
 	if (tp->kind == ARRAY && tp->array_size && tp->array_size > INT_MAX / size_of(tp->ptr_to))
 		error_at(tok->str, "ローカル変数のサイズが大きすぎます。");
@@ -86,7 +122,9 @@ int eval_const_expr(Node *node) {
 
 void program() {
 	int i = 0;
+    enter_scope();
 	while(!at_eof()) {
+		if (consume("typedef")) { typedef_decl(); continue; }
 		if(is_function()) {
 			code[i++] = func();
 		}else{
@@ -100,14 +138,13 @@ Node *func() {
 	locals = NULL;
 	Node *node = calloc(1, sizeof(Node));
 	current_function = node;
-	Token *tok = consume_kind(TK_TYPE);
-	if(!tok){
-		error_at(token->str, "型を書いてください。");
-	}
-	Type *ty = type(tok);
+    Type *ty = declspec();
+    Token *tok;
 	tok = NULL;
 	ty = declarator(ty, &tok);
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
+	declare_name(tok);
+    enter_scope();
 	node->kind = ND_FUNC;
 	node->func_name = strndup(tok->str, tok->len);
 	node->tp = ty;
@@ -117,7 +154,9 @@ Node *func() {
 		node->argc = consume_paramList(node, ty);
 	return_type = ty;
 	loop_depth = 0;
+	function_body = true;
 	node->body = block();
+    leave_scope();
 	return_type = NULL;
 	return node;
 }
@@ -126,6 +165,8 @@ Node *block(){
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_BLOCK;
 	LVar *saved = locals;
+    bool own_scope = !function_body; function_body = false;
+    if (own_scope) enter_scope();
 	if(!consume("{")) error_at(token->str, "'{'が必要です。");
     int i = 0;
     while (!consume("}")) {
@@ -133,11 +174,13 @@ Node *block(){
     }
     node->stmts[i] = NULL;
 	locals = saved;
+    if (own_scope) leave_scope();
 	return node;
 }
 
 Node *stmt() {
 	Node *node;
+	if (consume("typedef")) return typedef_decl();
 	if (consume(";")) return new_node(ND_NOP, NULL, NULL);
 	Token *start = token;
 	if (consume("break")) {
@@ -187,14 +230,14 @@ Node *stmt() {
 		return node;
 	}
 	if (consume("for")) {
+        LVar *saved_locals = locals; enter_scope();
 		node = new_node(ND_FOR, NULL, NULL);
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		// init
 		if (!consume(";")) {
-			Token *tok = consume_kind(TK_TYPE);
-			if(!tok) node->init = expr();
+			if (!is_typename(token)) node->init = expr();
 			else {
-				Type *ty = type(tok);
+				Type *ty = declspec();
 				node->init = def_stmt(ty);
 			}
 			if(!consume(";")) error_at(token->str, "初期化式を書いてください");
@@ -212,14 +255,14 @@ Node *stmt() {
 		loop_depth++;
 		node->body = stmt();
 		loop_depth--;
+        locals = saved_locals; leave_scope();
 		return node;
 	}
 	if (token->str[0] == '{') {
 		return block();
 	}
-	Token *tok = consume_kind(TK_TYPE);
-	if(tok) {
-		Type *ty = type(tok);
+	if (is_typename(token)) {
+		Type *ty = declspec();
 		node = def_stmt(ty);
 	}
 	else node = expr();
@@ -237,11 +280,7 @@ Node *def_stmt(Type *tp){
 
 void global_decl()
 {
-	Token *tok = consume_kind(TK_TYPE);
-	if(!tok) {
-		error_at(token->str, "型が必要です。");
-	}
-	Type *ty = type(tok);
+    Type *ty = declspec();
 	decl_global(ty);
 	expect(';');
 }
@@ -252,6 +291,7 @@ void decl_global(Type *ty)
 	ty = declarator(ty, &tok);
     if (ty->kind == VOID) error_at(tok->str, "void object");
 	GVar *gvar = calloc(1, sizeof(GVar));
+	declare_name(tok);
 	gvar->name = strndup(tok->str, tok->len);
 	gvar->len  = tok->len;
 	gvar->tp   = ty;
@@ -271,9 +311,11 @@ Type *_typename(Token *tok) {
 }
 Type *type(Token *tok) { return _typename(tok); }
 Type *declspec(void) {
-    Token *tok = consume_kind(TK_TYPE);
-    if (!tok) error_at(token->str, "type required");
-    return _typename(tok);
+    Token *tok = token;
+    if (tok->kind == TK_TYPE) { token = token->next; return _typename(tok); }
+    VarScope *v = find_name(tok);
+    if (!v || !v->typedef_type) error_at(tok->str, "type required");
+    token = token->next; return v->typedef_type;
 }
 static Type *type_suffix(Type *base) {
     if (!consume("[")) return base;
@@ -304,19 +346,24 @@ static Type *parse_declarator(Type *base, Token **name, bool abstract) {
     return type_suffix(base);
 }
 Type *declarator(Type *base, Token **name) { return parse_declarator(base, name, false); }
-Type *type_name(void) { Token *name = NULL; return parse_declarator(declspec(), &name, true); }
+Type *type_name(void) {
+    Token *name = NULL; Type *tp = parse_declarator(declspec(), &name, true);
+    if (name) error_at(name->str, "type name cannot contain an identifier");
+    return tp;
+}
 
 Node *decl(Type *tp){
     Token *tok = NULL;
     tp = declarator(tp, &tok);
     if (tp->kind == VOID) error_at(tok->str, "void object");
     bool infer_size = tp->kind == ARRAY && tp->array_size == 0;
-	if (find_lvar(tok) || find_gvar(tok))
-		error_at(tok->str, "既に定義されている変数です。");
+    if (infer_size) { Type *copy = calloc(1, sizeof(Type)); *copy = *tp; tp = copy; }
+	VarScope *binding = declare_name(tok);
 	LVar *lvar = calloc(1, sizeof(LVar));
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
+    binding->var = lvar;
 	lvar->offset = local_offset(tp, locals ? locals->offset : 0, tok);
 	lvar->next = locals;
 	locals = lvar;
@@ -546,7 +593,7 @@ Node *unary() {
 		return node;
 	}
 	if(consume("sizeof")) {
-        if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(' && token->next->kind == TK_TYPE) {
+        if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(' && is_typename(token->next)) {
             expect('('); Type *tp = type_name(); expect(')'); return new_node_num(size_of(tp));
         }
         Node *operand = unary(); return new_node_num(size_of(operand->tp));
@@ -563,6 +610,8 @@ static Node *primary_atom() {
         }
 	Token *tok = consume_ident();
 	if (tok) {
+        VarScope *binding = find_name(tok);
+        if (binding && binding->typedef_type) error_at(tok->str, "typedef name is not an expression");
 		if(tok->kind != TK_IDENT) 
 			error_at(token->str, "変数じゃないです");
 		Node *node = calloc(1, sizeof(Node));
@@ -658,10 +707,7 @@ Node *primary() {
 }
 
 LVar *find_lvar(Token *tok) {
-	for (LVar *var = locals; var; var = var->next) {
-		if (var->len == tok->len && !memcmp(tok->str, var->name, var->len)) return var;
-	}
-	return NULL;
+    VarScope *v = find_name(tok); return v ? v->var : NULL;
 }
 GVar *find_gvar(Token *tok) {
 	for (GVar *gvar = globals;gvar;gvar = gvar->next) {
@@ -724,21 +770,18 @@ Token *consume_ident() {
 }
 
 int consume_paramList(Node *node, Type *ty) {
-    if (token->kind == TK_TYPE && token->len == 4 &&
-        !memcmp(token->str, "void", 4) &&
-        token->next->kind == TK_RESERVED && token->next->len == 1 &&
-        token->next->str[0] == ')') {
-        token = token->next->next;
-        return 0;
+    if (is_typename(token)) {
+        Token *saved = token;
+        Type *base = declspec();
+        if (base->kind == VOID && consume(")")) return 0;
+        token = saved;
     }
     int i;
     for (i = 0; !consume(")"); i++) {
         if (i > 0 && !consume(","))
             error_at(token->str, "','が必要です。");
-		Token *tok = consume_kind(TK_TYPE);
-        if(!tok)
-			error_at(token->str, "型が必要です。");
-        Type *param_ty = type(tok);
+		Token *tok;
+        Type *param_ty = declspec();
         tok = NULL;
         param_ty = declarator(param_ty, &tok);
         param_ty = decay_type(param_ty);
@@ -747,6 +790,7 @@ int consume_paramList(Node *node, Type *ty) {
         if (!tok)
             error_at(token->str, "識別子が必要です。");
         LVar *var = calloc(1, sizeof(LVar));
+        declare_name(tok)->var = var;
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
@@ -921,7 +965,7 @@ void tokenize(char *p) {
 			}
 			char *ident = strndup(p, i);
 			if(is_type(ident)) cur = new_token(TK_TYPE, cur, p);
-			else if (strcmp(ident, "sizeof") == 0) cur = new_token(TK_RESERVED, cur, p);
+			else if (strcmp(ident, "sizeof") == 0 || strcmp(ident, "typedef") == 0) cur = new_token(TK_RESERVED, cur, p);
 			else cur = new_token(TK_IDENT, cur, p);
 			cur->len = i;
 			p = p + i;
