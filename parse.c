@@ -296,7 +296,7 @@ Node *expr() {
 }
 
 Node *assign() {
-	Node *node = equality();
+	Node *node = logical_or();
 	if(consume("=")) {
 		if (node->tp && node->tp->kind == ARRAY)
 			error_at(token->str, "配列には代入できません。");
@@ -319,6 +319,24 @@ Node *assign() {
 		Node *rhs = new_node(ND_DIV, node,assign());
 		node = new_node(ND_ASSIGN, node, rhs);
 		node->tp = node->lhs->tp;
+	}
+	return node;
+}
+
+Node *logical_or() {
+	Node *node = logical_and();
+	while (consume("||")) {
+		node = new_node(ND_LOGOR, node, logical_and());
+		node->tp = new_type(INT, NULL);
+	}
+	return node;
+}
+
+Node *logical_and() {
+	Node *node = equality();
+	while (consume("&&")) {
+		node = new_node(ND_LOGAND, node, equality());
+		node->tp = new_type(INT, NULL);
 	}
 	return node;
 }
@@ -414,8 +432,17 @@ Node *mul() {
 }
 
 Node *unary() {
-	if(consume("+")) return primary();
-	if(consume("-")) return new_node(ND_SUB, new_node_num(0), primary());
+	if (consume("!")) {
+		Node *node = new_node(ND_NOT, unary(), NULL);
+		node->tp = new_type(INT, NULL);
+		return node;
+	}
+	if(consume("+")) return unary();
+	if(consume("-")) {
+		Node *node = new_node(ND_SUB, new_node_num(0), unary());
+		node->tp = new_type(INT, NULL);
+		return node;
+	}
 	if(consume("*")) 
 	{
 		Node *lhs = unary();
@@ -780,6 +807,7 @@ void tokenize(char *p) {
 
 		if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
 				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2) ||
+				!memcmp(p, "&&", 2) || !memcmp(p, "||", 2) ||
 				!memcmp(p, "+=", 2) || !memcmp(p, "-=", 2) || !memcmp(p, "*=", 2) || !memcmp(p, "/=", 2)
 			){
 			cur = new_token(TK_RESERVED, cur, p);
@@ -789,7 +817,7 @@ void tokenize(char *p) {
 		}
 
 		if (*p == '+' || *p == '-' || *p == '*' || *p == '/' ||
-				*p == '<' || *p == '>' || *p == '&') {
+				*p == '<' || *p == '>' || *p == '&' || *p == '!') {
 			cur = new_token(TK_RESERVED, cur, p++);
 			cur->len = 1;
 			continue;
