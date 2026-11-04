@@ -4,6 +4,39 @@ Node *code[100];
 static int loop_depth;
 static Type *return_type;
 
+// Enum tags occupy a separate namespace; enumerators share ordinary names.
+typedef struct EnumEntry EnumEntry;
+struct EnumEntry {
+    EnumEntry *next;
+    Token *name;
+    int depth;
+    int value;
+    Type *type;
+};
+static EnumEntry *enum_tags, *enum_values;
+static int scope_depth;
+static EnumEntry *find_enum(EnumEntry *entry, Token *name) {
+    for (; entry; entry = entry->next)
+        if (entry->name->len == name->len &&
+            !memcmp(entry->name->str, name->str, name->len)) return entry;
+    return NULL;
+}
+static void check_enum_name(Token *name) {
+    if (!scope_depth)
+        for (int i = 0; code[i]; i++)
+            if (strlen(code[i]->func_name) == name->len &&
+                !memcmp(code[i]->func_name, name->str, name->len))
+                error_at(name->str, "duplicate enumerator or function name");
+    EnumEntry *entry = find_enum(enum_values, name);
+    LVar *local = find_lvar(name);
+    if ((entry && entry->depth == scope_depth) ||
+        (local && local->scope_depth == scope_depth) ||
+        (!scope_depth && find_gvar(name)))
+        error_at(name->str, "duplicate enumerator or variable name");
+}
+static Type *enum_type(void);
+static Node *block_in_scope(bool enter_scope);
+
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
 	Node *node      = calloc(1, sizeof(Node));
 	node->kind      = kind;
@@ -48,24 +81,80 @@ Type *new_type(Typename typename, Type *next)
 }
 
 int eval_const_expr(Node *node) {
+    long long lhs, rhs, result;
     switch (node->kind) {
-    case ND_NUM:
-        return node->val;
-    case ND_ADD:
-        return eval_const_expr(node->lhs)
-             + eval_const_expr(node->rhs);
-    case ND_SUB:
-        return eval_const_expr(node->lhs)
-             - eval_const_expr(node->rhs);
-    case ND_MUL:
-        return eval_const_expr(node->lhs)
-             * eval_const_expr(node->rhs);
-    case ND_DIV:
-        return eval_const_expr(node->lhs)
-             / eval_const_expr(node->rhs);
+    case ND_NUM: return node->val;
+    case ND_SIZE: return size_of(node->lhs->tp);
+    case ND_NOT: return !eval_const_expr(node->lhs);
+    case ND_LOGAND:
+        lhs = eval_const_expr(node->lhs);
+        return lhs && eval_const_expr(node->rhs);
+    case ND_LOGOR:
+        lhs = eval_const_expr(node->lhs);
+        return lhs || eval_const_expr(node->rhs);
+    case ND_ADD: case ND_SUB: case ND_MUL: case ND_DIV:
+    case ND_EQL: case ND_NEQL: case ND_LST: case ND_LSE:
+        lhs = eval_const_expr(node->lhs);
+        rhs = eval_const_expr(node->rhs);
+        switch (node->kind) {
+        case ND_ADD: result = lhs + rhs; break;
+        case ND_SUB: result = lhs - rhs; break;
+        case ND_MUL: result = lhs * rhs; break;
+        case ND_DIV:
+            if (!rhs) error_at(token->str, "division by zero in constant expression");
+            result = lhs / rhs; break;
+        case ND_EQL: return lhs == rhs;
+        case ND_NEQL: return lhs != rhs;
+        case ND_LST: return lhs < rhs;
+        default: return lhs <= rhs;
+        }
+        if (result < INT_MIN || result > INT_MAX)
+            error_at(token->str, "integer constant expression overflow");
+        return result;
     default:
-        error_at(token->str, "配列サイズは定数の式である必要があります");
+        error_at(token->str, "integer constant expression required");
     }
+    return 0;
+}
+
+static Type *enum_type(void) {
+    Token *tag = consume_ident();
+    EnumEntry *entry = tag ? find_enum(enum_tags, tag) : NULL;
+    if (!consume("{")) {
+        if (!entry) error_at(tag ? tag->str : token->str, "unknown enum tag");
+        return entry->type;
+    }
+    Type *ty = new_type(INT, NULL);
+    ty->enum_identity = ty;
+    if (tag) {
+        if (entry && entry->depth == scope_depth)
+            error_at(tag->str, "duplicate enum tag");
+        entry = calloc(1, sizeof(EnumEntry));
+        entry->name = tag;
+        entry->depth = scope_depth;
+        entry->type = ty;
+        entry->next = enum_tags;
+        enum_tags = entry;
+    }
+    long long value = 0;
+    do {
+        Token *name = consume_ident();
+        if (!name) error_at(token->str, "enumerator name required");
+        check_enum_name(name);
+        if (consume("=")) value = eval_const_expr(logical_or());
+        if (value < INT_MIN || value > INT_MAX)
+            error_at(name->str, "enumerator value is outside int range");
+        entry = calloc(1, sizeof(EnumEntry));
+        entry->name = name;
+        entry->depth = scope_depth;
+        entry->value = value++;
+        entry->next = enum_values;
+        enum_values = entry;
+        if (consume("}")) break;
+        expect(',');
+        if (consume("}")) break;
+    } while (1);
+    return ty;
 }
 
 void program() {
@@ -88,26 +177,39 @@ Node *func() {
 		error_at(token->str, "型を書いてください。");
 	}
 	Type *ty = type(tok);
+	EnumEntry *saved_tags = enum_tags, *saved_values = enum_values;
 	tok = consume_kind(TK_IDENT);
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
+	check_enum_name(tok);
 	node->kind = ND_FUNC;
 	node->func_name = strndup(tok->str, tok->len);
 	node->tp = ty;
 	if(!consume("(")) 
 		error_at(token->str, "'('が来るべきです。");
+	scope_depth++;
 	if(!consume(")")) 
 		node->argc = consume_paramList(node, ty);
 	return_type = ty;
 	loop_depth = 0;
-	node->body = block();
+	node->body = block_in_scope(false);
 	return_type = NULL;
+	scope_depth--;
+	enum_tags = saved_tags;
+	enum_values = saved_values;
+	locals = NULL;
 	return node;
 }
 
-Node *block(){
+Node *block() {
+    return block_in_scope(true);
+}
+
+static Node *block_in_scope(bool enter_scope) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_BLOCK;
 	LVar *saved = locals;
+	EnumEntry *saved_tags = enum_tags, *saved_values = enum_values;
+	if (enter_scope) scope_depth++;
 	if(!consume("{")) error_at(token->str, "'{'が必要です。");
     int i = 0;
     while (!consume("}")) {
@@ -115,6 +217,9 @@ Node *block(){
     }
     node->stmts[i] = NULL;
 	locals = saved;
+	enum_tags = saved_tags;
+	enum_values = saved_values;
+	if (enter_scope) scope_depth--;
 	return node;
 }
 
@@ -169,6 +274,9 @@ Node *stmt() {
 		return node;
 	}
 	if (consume("for")) {
+		EnumEntry *saved_tags = enum_tags, *saved_values = enum_values;
+		LVar *saved_locals = locals;
+		scope_depth++;
 		node = new_node(ND_FOR, NULL, NULL);
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		// init
@@ -194,6 +302,10 @@ Node *stmt() {
 		loop_depth++;
 		node->body = stmt();
 		loop_depth--;
+		enum_tags = saved_tags;
+		enum_values = saved_values;
+		locals = saved_locals;
+		scope_depth--;
 		return node;
 	}
 	if (token->str[0] == '{') {
@@ -210,6 +322,8 @@ Node *stmt() {
 }
 
 Node *def_stmt(Type *tp){
+	if (token->kind == TK_RESERVED && token->str[0] == ';')
+		return new_node(ND_NOP, NULL, NULL);
 	Node *node = decl(tp);
 	while(consume(",")){
 		node = new_node(ND_DEF, node, decl(tp));
@@ -224,6 +338,7 @@ void global_decl()
 		error_at(token->str, "型が必要です。");
 	}
 	Type *ty = type(tok);
+	if (consume(";")) return;
 	decl_global(ty);
 	expect(';');
 }
@@ -232,6 +347,8 @@ void decl_global(Type *ty)
 {
 	if (ty->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
 	Token *tok = consume_ident();
+	if (!tok) error_at(token->str, "identifier required");
+	check_enum_name(tok);
 	GVar *gvar = calloc(1, sizeof(GVar));
 	gvar->name = strndup(tok->str, tok->len);
 	gvar->len  = tok->len;
@@ -255,6 +372,7 @@ Type *type(Token *tok)
 
 Type *_typename(Token *tok)
 {
+	if (tok->len == 4 && !memcmp(tok->str, "enum", 4)) return enum_type();
 	Typename tp;
 	if(!memcmp(tok->str, "int", 3)) tp = INT;
 	else if(!memcmp(tok->str, "char", 4)) tp = CHAR;
@@ -267,6 +385,7 @@ Node *decl(Type *tp){
 	if (tp->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
 	Token *tok = consume_ident();
 	if(!tok) error_at(token->str, "識別子が来るべきです。");
+	check_enum_name(tok);
 	bool infer_size = false;
 	if(consume("[")){
 		int len = 0;
@@ -283,6 +402,7 @@ Node *decl(Type *tp){
 	if (find_lvar(tok) || find_gvar(tok))
 		error_at(tok->str, "既に定義されている変数です。");
 	LVar *lvar = calloc(1, sizeof(LVar));
+	lvar->scope_depth = scope_depth;
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
@@ -523,6 +643,9 @@ static Node *primary_atom() {
 		}
 		else node->kind = ND_LVAR;
 		LVar *lvar = find_lvar(tok);
+		EnumEntry *value = find_enum(enum_values, tok);
+		if (value && (!lvar || value->depth > lvar->scope_depth))
+			return new_node_num(value->value);
 		if (lvar) {
 			node->offset = lvar->offset;
 			node->tp = lvar->tp;
@@ -671,7 +794,9 @@ int consume_paramList(Node *node, Type *ty) {
         tok = consume_ident();
         if (!tok)
             error_at(token->str, "識別子が必要です。");
+        check_enum_name(tok);
         LVar *var = calloc(1, sizeof(LVar));
+        var->scope_depth = scope_depth;
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
@@ -900,9 +1025,13 @@ void tokenize(char *p) {
 		}
 		if (isdigit(*p)) {
 			cur = new_token(TK_NUM, cur, p);
-			cur->val = strtol(p, &p, 10);
-			char buffer[20];
-			cur->len = sprintf(buffer, "%d", cur->val);
+			char *start = p;
+			errno = 0;
+			long value = strtol(p, &p, 10);
+			if (errno == ERANGE || value > INT_MAX)
+				error_at(start, "integer literal is outside supported int range");
+			cur->val = value;
+			cur->len = p - start;
 			continue;
 		}
 		if (*p == '"' || *p == '\'') {
