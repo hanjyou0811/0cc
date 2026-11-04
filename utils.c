@@ -20,7 +20,8 @@ int is_alnum(char c)
 
 int is_type(char *ident){
     return strcmp(ident, "int") == 0 ||
-           strcmp(ident, "char") == 0;
+           strcmp(ident, "char") == 0 ||
+           strcmp(ident, "void") == 0;
 }
 
 int match_token(char *str, char *tgt)
@@ -60,6 +61,9 @@ extern_funcs *add_extern_funcs(const char *funcname)
 
 int size_of(Type *tp) {
     switch (tp->kind) {
+    case VOID:
+        error("void型にはサイズがありません。");
+        return 0;
     case INT:
         return 4;
     case PTR:

@@ -36,6 +36,7 @@ typedef enum {
         CHAR,
         STR,
         ARRAY,
+        VOID,
 }       Typename;
 typedef struct Type Type;
 struct Type {
@@ -62,6 +63,8 @@ typedef enum {
 	ND_COMMA,	// ','
 	ND_BLOCK,	// {}
         ND_NOP,         // empty statement
+        ND_BREAK,
+        ND_CONTINUE,
 	ND_CALL,        // call function
         ND_FUNC,	// func def
 	ND_ADDR,	// &x

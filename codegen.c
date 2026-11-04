@@ -1,5 +1,13 @@
 #include "0cc.h"
 
+static int loop_id = -1;
+
+static void gen_stmt(Node *node) {
+	if (!node) return;
+	gen(node);
+	if (has_value(node)) println("\tpop rax");
+}
+
 void gen_lval(Node *node) {
 	switch (node->kind) {
 	case ND_LVAR:
@@ -65,9 +73,21 @@ void gen(Node *node) {
 		else println("	mov [rax], rdi");
 		println("	push rdi");
 		return ;
+	case ND_BREAK:
+		println("\tjmp .Lend%03d", loop_id);
+		return;
+	case ND_CONTINUE:
+		println("\tjmp .Lcontinue%03d", loop_id);
+		return;
+	case ND_DEF:
+		gen_stmt(node->lhs);
+		gen_stmt(node->rhs);
+		return;
 	case ND_RETURN:
-		gen(node->lhs);
-		println("	pop rax");
+		if (node->lhs) {
+			gen(node->lhs);
+			println("\tpop rax");
+		}
 		println("	mov rsp, rbp");
 		println("	pop rbp");
 		println("	ret");
@@ -81,29 +101,36 @@ void gen(Node *node) {
 			println("	je .Lelse%03d", id);
 		} else 
 			println("	je .Lend%03d", id);
-		gen(node->then);
+		gen_stmt(node->then);
 		if(node->els)
 		{
 			println("	jmp .Lend%03d", id);
 			println(".Lelse%03d:", id);
-			gen(node->els);
+			gen_stmt(node->els);
 		}
 		println(".Lend%03d:", id);
 		return ;
-	case ND_WHILE:
-		id = lavel_id++;
+	case ND_WHILE: {
+		int id = lavel_id++;
+		int outer_loop = loop_id;
+		loop_id = id;
 		println(".Lbegin%03d:", id);
+		println(".Lcontinue%03d:", id);
 		gen(node->cond);
 		println("	pop rax");
 		println("	cmp rax, 0");
 		println("	je .Lend%03d", id);
-		gen(node->then);
+		gen_stmt(node->then);
 		println("	jmp .Lbegin%03d", id);
 		println(".Lend%03d:", id);
+		loop_id = outer_loop;
 		return ;
-	case ND_FOR:
-		id = lavel_id++;
-		gen(node->init);
+	}
+	case ND_FOR: {
+		int id = lavel_id++;
+		int outer_loop = loop_id;
+		loop_id = id;
+		gen_stmt(node->init);
 		println(".Lbegin%03d:", id);
 		if (node->cond) {
 			gen(node->cond);
@@ -111,22 +138,17 @@ void gen(Node *node) {
 			println("	cmp rax, 0");
 			println("	je .Lend%03d", id);
 		}
-		gen(node->body);
-		gen(node->inc);
+		gen_stmt(node->body);
+		println(".Lcontinue%03d:", id);
+		gen_stmt(node->inc);
 		println("	jmp .Lbegin%03d", id);
 		println(".Lend%03d:", id);
+		loop_id = outer_loop;
 		return ;
+	}
 	case ND_BLOCK:
-		int j = 0;
-		for(int i=0;node->stmts[i];i++) {
-			j++;
-		}
-		for(int i=0;i < j-1;i++) {
-			gen(node->stmts[i]);
-			if(has_value(node->stmts[i]))
-				println("	pop rax");
-		}
-		if (j > 0) gen(node->stmts[j-1]);
+		for (int i = 0; node->stmts[i]; i++)
+			gen_stmt(node->stmts[i]);
 		return ;
 	case ND_CALL:
 		int argc = 0;
