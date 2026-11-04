@@ -71,6 +71,8 @@ int size_of(Type *tp) {
 	case CHAR:
 		return 1;
     case ARRAY:
+        if (!tp->array_size) error("incomplete array has no size");
+        if (tp->array_size > 2147483647 / size_of(tp->ptr_to)) error("object too large");
         return size_of(tp->ptr_to) * tp->array_size;
     }
 }
@@ -154,3 +156,5 @@ int has_value(Node *node)
 		return 0;
 	}
 }
+
+int align_of(Type *tp) { return tp->kind == ARRAY ? align_of(tp->ptr_to) : size_of(tp); }

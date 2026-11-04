@@ -7,9 +7,9 @@ static Type *return_type;
 static Node *current_function;
 
 static int local_offset(Type *tp, int previous, Token *tok) {
-	if (tp->kind == ARRAY && tp->array_size > INT_MAX / size_of(tp->ptr_to))
+	if (tp->kind == ARRAY && tp->array_size && tp->array_size > INT_MAX / size_of(tp->ptr_to))
 		error_at(tok->str, "ローカル変数のサイズが大きすぎます。");
-	int size = MAX(size_of(tp), 8);
+	int size = tp->kind == ARRAY && !tp->array_size ? 8 : MAX(size_of(tp), 8);
 	if (size > INT_MAX - 15 - previous)
 		error_at(tok->str, "関数のスタックサイズが大きすぎます。");
 	int offset = previous + size;
@@ -105,7 +105,8 @@ Node *func() {
 		error_at(token->str, "型を書いてください。");
 	}
 	Type *ty = type(tok);
-	tok = consume_kind(TK_IDENT);
+	tok = NULL;
+	ty = declarator(ty, &tok);
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	node->kind = ND_FUNC;
 	node->func_name = strndup(tok->str, tok->len);
@@ -247,8 +248,9 @@ void global_decl()
 
 void decl_global(Type *ty)
 {
-	if (ty->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
-	Token *tok = consume_ident();
+	Token *tok = NULL;
+	ty = declarator(ty, &tok);
+    if (ty->kind == VOID) error_at(tok->str, "void object");
 	GVar *gvar = calloc(1, sizeof(GVar));
 	gvar->name = strndup(tok->str, tok->len);
 	gvar->len  = tok->len;
@@ -261,42 +263,54 @@ void decl_global(Type *ty)
 	globals = gvar;
 }
 
-Type *type(Token *tok)
-{
-	Type *ty = _typename(tok);
-	while(consume("*")){
-		ty = new_type(PTR, ty);
-	}
-	return ty;
+Type *_typename(Token *tok) {
+    if (tok->len == 3 && !memcmp(tok->str, "int", 3)) return new_type(INT, NULL);
+    if (tok->len == 4 && !memcmp(tok->str, "char", 4)) return new_type(CHAR, NULL);
+    if (tok->len == 4 && !memcmp(tok->str, "void", 4)) return new_type(VOID, NULL);
+    error_at(tok->str, "type required"); return NULL;
 }
-
-Type *_typename(Token *tok)
-{
-	Typename tp;
-	if(!memcmp(tok->str, "int", 3)) tp = INT;
-	else if(!memcmp(tok->str, "char", 4)) tp = CHAR;
-	else if(!memcmp(tok->str, "void", 4)) tp = VOID;
-	Type *ty = new_type(tp, NULL);
-	return ty;
+Type *type(Token *tok) { return _typename(tok); }
+Type *declspec(void) {
+    Token *tok = consume_kind(TK_TYPE);
+    if (!tok) error_at(token->str, "type required");
+    return _typename(tok);
 }
+static Type *type_suffix(Type *base) {
+    if (!consume("[")) return base;
+    int len = 0;
+    if (!consume("]")) {
+        len = eval_const_expr(assign()); expect(']');
+        if (len <= 0) error_at(token->str, "array size must be positive");
+    }
+    Type *element = type_suffix(base);
+    if (element->kind == VOID || (element->kind == ARRAY && !element->array_size))
+        error_at(token->str, "array element must be complete");
+    Type *tp = new_type(ARRAY, element); tp->array_size = len; return tp;
+}
+static Type *parse_declarator(Type *base, Token **name, bool abstract) {
+    while (consume("*")) base = new_type(PTR, base);
+    if (consume("(")) {
+        Token *start = token;
+        Type dummy = {0};
+        parse_declarator(&dummy, name, abstract); expect(')');
+        base = type_suffix(base);
+        Token *end = token;
+        token = start;
+        Type *result = parse_declarator(base, name, abstract); expect(')');
+        token = end; return result;
+    }
+    if (token->kind == TK_IDENT) *name = consume_ident();
+    else if (!abstract) error_at(token->str, "identifier required");
+    return type_suffix(base);
+}
+Type *declarator(Type *base, Token **name) { return parse_declarator(base, name, false); }
+Type *type_name(void) { Token *name = NULL; return parse_declarator(declspec(), &name, true); }
 
 Node *decl(Type *tp){
-	if (tp->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
-	Token *tok = consume_ident();
-	if(!tok) error_at(token->str, "識別子が来るべきです。");
-	bool infer_size = false;
-	if(consume("[")){
-		int len = 0;
-		if (consume("]")) infer_size = true;
-		else {
-			len = eval_const_expr(expr());
-			expect(']');
-			if (len <= 0) error_at(tok->str, "配列サイズは正の整数が必要です。");
-		}
-		Type *arr = new_type(ARRAY, tp);
-		arr->array_size = len;
-		tp = arr;
-	}
+    Token *tok = NULL;
+    tp = declarator(tp, &tok);
+    if (tp->kind == VOID) error_at(tok->str, "void object");
+    bool infer_size = tp->kind == ARRAY && tp->array_size == 0;
 	if (find_lvar(tok) || find_gvar(tok))
 		error_at(tok->str, "既に定義されている変数です。");
 	LVar *lvar = calloc(1, sizeof(LVar));
@@ -422,52 +436,57 @@ Node *relational() {
         }
 }
 
-Node *new_add(Node *lhs, Node *rhs)
-{
-	Node *node = new_node(ND_ADD, lhs, rhs);
-	if(lhs->tp && rhs->tp){
-		if (lhs->tp->kind == INT && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY))
-		{
-			Node *tmp = node->lhs;
-			node->lhs = node->rhs;
-			node->rhs = tmp;
-		}
-		if((lhs->tp->kind == ARRAY || lhs->tp->kind == PTR) && rhs->tp->kind == INT)
-		{
-			int size = size_of(lhs->tp->ptr_to);
-			Node *mul = new_node(ND_MUL, rhs, new_node_num(size));
-			mul->tp = new_type(INT, NULL);
-			node->rhs = mul;
-			node->tp = lhs->tp;
-			return node;
-		}
-	}
-	node->tp = new_type(INT, NULL);
-	return node;
+static bool integer_type(Type *tp) { return tp && (tp->kind == INT || tp->kind == CHAR); }
+
+Type *decay_type(Type *tp) {
+    return tp && tp->kind == ARRAY ? new_type(PTR, tp->ptr_to) : tp;
 }
 
-Node *new_sub(Node *lhs, Node *rhs)
-{
-	Node *node = new_node(ND_SUB, lhs, rhs);
-	if(lhs->tp && rhs->tp){
-		if ((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && rhs->tp->kind == INT)
-		{
-			int size = size_of(lhs->tp->ptr_to);
-			rhs = new_node(ND_MUL, rhs, new_node_num(size));
-			rhs->tp = new_type(INT, NULL);
-			node->rhs = rhs;
-			node->tp = lhs->tp;
-			return node;
-		}
-		if((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY)) {
-			node->tp = new_type(INT, NULL);
-			Node *div = new_node(ND_DIV, node, new_node_num(size_of(lhs->tp->ptr_to)));
-			div->tp = new_type(INT, NULL);
-			return div;
-		}
-	}
-	node->tp = new_type(INT, NULL);
-	return node;
+static void pointer_element(Type *tp) {
+    if (!tp->ptr_to || tp->ptr_to->kind == VOID || size_of(tp->ptr_to) <= 0)
+        error_at(token->str, "pointer arithmetic requires a complete object type");
+}
+
+bool compatible_type(Type *a, Type *b) {
+    if (!a || !b || a->kind != b->kind) return false;
+    if (a->kind == PTR) return compatible_type(a->ptr_to, b->ptr_to);
+    if (a->kind == ARRAY) return a->array_size == b->array_size && compatible_type(a->ptr_to, b->ptr_to);
+    return true;
+}
+
+Node *new_add(Node *lhs, Node *rhs) {
+    Type *lt = decay_type(lhs->tp), *rt = decay_type(rhs->tp);
+    if (integer_type(lt) && rt && rt->kind == PTR) {
+        Node *tmp = lhs; lhs = rhs; rhs = tmp;
+        Type *tt = lt; lt = rt; rt = tt;
+    }
+    Node *node;
+    if (lt && lt->kind == PTR && integer_type(rt)) {
+        pointer_element(lt);
+        node = new_node(ND_ADD, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
+        node->tp = lt;
+    } else {
+        if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to addition");
+        node = new_node(ND_ADD, lhs, rhs); node->tp = new_type(INT, NULL);
+    }
+    return node;
+}
+
+Node *new_sub(Node *lhs, Node *rhs) {
+    Type *lt = decay_type(lhs->tp), *rt = decay_type(rhs->tp);
+    if (lt && lt->kind == PTR) {
+        pointer_element(lt);
+        if (integer_type(rt)) {
+            Node *node = new_node(ND_SUB, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
+            node->tp = lt; return node;
+        }
+        if (rt && rt->kind == PTR && compatible_type(lt, rt)) {
+            Node *diff = new_node(ND_SUB, lhs, rhs); diff->tp = new_type(INT, NULL);
+            return new_node(ND_DIV, diff, new_node_num(size_of(lt->ptr_to)));
+        }
+    }
+    if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to subtraction");
+    Node *node = new_node(ND_SUB, lhs, rhs); node->tp = new_type(INT, NULL); return node;
 }
 
 Node *add() {
@@ -516,6 +535,8 @@ Node *unary() {
 	{
 		Node *lhs = unary();
 		Node *node = new_node(ND_DEREF, lhs, NULL);
+		if (!lhs->tp || (lhs->tp->kind != PTR && lhs->tp->kind != ARRAY) || lhs->tp->ptr_to->kind == VOID)
+            error_at(op->str, "dereference requires object pointer");
 		node->tp = lhs->tp->ptr_to;
 		return node;
 	}
@@ -525,10 +546,11 @@ Node *unary() {
 		return node;
 	}
 	if(consume("sizeof")) {
-		Node *node = new_node(ND_SIZE, unary(), NULL);
-		node->tp = new_type(INT, NULL);
-		return node;
-	}
+        if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(' && token->next->kind == TK_TYPE) {
+            expect('('); Type *tp = type_name(); expect(')'); return new_node_num(size_of(tp));
+        }
+        Node *operand = unary(); return new_node_num(size_of(operand->tp));
+    }
 	return primary();
 }
 
@@ -620,9 +642,10 @@ Node *primary() {
 		if (consume("[")) {
 			Node *index = expr();
 			expect(']');
-			if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
+			Node *address = new_add(node, index);
+			if (!address->tp || address->tp->kind != PTR)
 				error_at(token->str, "添字には配列かポインタが必要です。");
-			node = new_node(ND_DEREF, new_add(node, index), NULL);
+			node = new_node(ND_DEREF, address, NULL);
 			node->tp = node->lhs->tp->ptr_to;
 			continue;
 		}
@@ -716,9 +739,11 @@ int consume_paramList(Node *node, Type *ty) {
         if(!tok)
 			error_at(token->str, "型が必要です。");
         Type *param_ty = type(tok);
+        tok = NULL;
+        param_ty = declarator(param_ty, &tok);
+        param_ty = decay_type(param_ty);
         if (param_ty->kind == VOID)
             error_at(tok->str, "voidは単独の引数リストでのみ使えます。");
-        tok = consume_ident();
         if (!tok)
             error_at(token->str, "識別子が必要です。");
         LVar *var = calloc(1, sizeof(LVar));

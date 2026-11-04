@@ -290,7 +290,7 @@ void gen(Node *node) {
 		println("	push %d", size_of(node->lhs->tp));
 		return ;
 	case ND_GVAR:
-		if(node->tp && node->tp->kind == ARRAY) return ;	
+		if(node->tp && node->tp->kind == ARRAY) { gen_lval(node); return; }	
 		gen_lval(node);
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
