@@ -125,6 +125,7 @@ struct Node {
         int argc;
 
         struct Type *tp;
+        int stack_size; // ND_FUNC: maximum local storage rounded to 16 bytes
 };
 
 void error(char *fmt, ...);

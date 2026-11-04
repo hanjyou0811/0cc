@@ -196,7 +196,8 @@ void gen(Node *node) {
 		println("%s:", node->func_name);
 		println("	push rbp");
 		println("	mov rbp, rsp");
-		println("	sub rsp, %d", 208);
+		if (node->stack_size)
+			println("\tsub rsp, %d", node->stack_size);
 		for (int i = 0; i < node->argc; i++) {
 			const char *int_args[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
 			if (node->params[i]->tp->kind == INT)
