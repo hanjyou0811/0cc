@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 
 #define MAX(x, y) ((x) < (y) ? (y) : (x))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -43,6 +44,7 @@ struct Type {
         Typename kind;
         struct Type *ptr_to;
         size_t array_size;
+        Type *enum_identity; // distinct enum type, with int representation
 };
 typedef enum {
         ND_ADD,         // +
@@ -85,6 +87,7 @@ struct LVar {
 	char *name;
 	int len;
 	int offset;
+        int scope_depth;
         Type *tp;
 };
 typedef struct GVar GVar;
