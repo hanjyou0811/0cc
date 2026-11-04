@@ -1,8 +1,21 @@
 #include "0cc.h"
+#include <limits.h>
 
 Node *code[100];
 static int loop_depth;
 static Type *return_type;
+static Node *current_function;
+
+static int local_offset(Type *tp, int previous, Token *tok) {
+	if (tp->kind == ARRAY && tp->array_size > INT_MAX / size_of(tp->ptr_to))
+		error_at(tok->str, "ローカル変数のサイズが大きすぎます。");
+	int size = MAX(size_of(tp), 8);
+	if (size > INT_MAX - 15 - previous)
+		error_at(tok->str, "関数のスタックサイズが大きすぎます。");
+	int offset = previous + size;
+	current_function->stack_size = MAX(current_function->stack_size, (offset + 15) / 16 * 16);
+	return offset;
+}
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
 	Node *node      = calloc(1, sizeof(Node));
@@ -83,6 +96,7 @@ void program() {
 Node *func() {
 	locals = NULL;
 	Node *node = calloc(1, sizeof(Node));
+	current_function = node;
 	Token *tok = consume_kind(TK_TYPE);
 	if(!tok){
 		error_at(token->str, "型を書いてください。");
@@ -286,7 +300,7 @@ Node *decl(Type *tp){
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
-	lvar->offset = (locals ? locals->offset : 0) + MAX(size_of(tp), 8);
+	lvar->offset = local_offset(tp, locals ? locals->offset : 0, tok);
 	lvar->next = locals;
 	locals = lvar;
 
@@ -302,7 +316,7 @@ Node *decl(Type *tp){
 				error_at(tok->str, "配列の初期化には文字配列と文字列が必要です。");
 			if (infer_size) {
 				tp->array_size = rhs->val;
-				lvar->offset = (lvar->next ? lvar->next->offset : 0) + MAX(size_of(tp), 8);
+				lvar->offset = local_offset(tp, lvar->next ? lvar->next->offset : 0, tok);
 				node->offset = lvar->offset;
 			}
 			// C permits an exact fit without the terminating NUL.
@@ -675,10 +689,7 @@ int consume_paramList(Node *node, Type *ty) {
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
-        if (locals)
-            var->offset = locals->offset + MAX(size_of(locals->tp), 8);
-        else
-            var->offset = MAX(size_of(param_ty), 8);
+        var->offset = local_offset(param_ty, locals ? locals->offset : 0, tok);
         var->next = locals;
         locals = var;
 
