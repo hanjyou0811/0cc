@@ -37,12 +37,26 @@ typedef enum {
         STR,
         ARRAY,
         VOID,
+        STRUCT,
 }       Typename;
 typedef struct Type Type;
+typedef struct Member Member;
+struct Member {
+        Member *next;
+        char *name;
+        int len;
+        int offset;
+        Type *tp;
+};
 struct Type {
         Typename kind;
         struct Type *ptr_to;
         size_t array_size;
+        Member *members;
+        int size;
+        int alignment;
+        bool complete;
+        bool defining;
 };
 typedef enum {
         ND_ADD,         // +
@@ -81,6 +95,7 @@ typedef enum {
         ND_DECL,        
         ND_SIZE,        //sizeof x
         ND_GVAR,
+        ND_MEMBER,
         ND_STR,
         ND_ARRAY_INIT,
         ND_NOT,

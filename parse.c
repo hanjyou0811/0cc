@@ -5,6 +5,10 @@ Node *code[100];
 static int loop_depth;
 static Type *return_type;
 static Node *current_function;
+static Type *pending_base;
+static Type *pending_type;
+static Token *pending_name;
+static Type *struct_specifier(void);
 
 Scope *scope;
 static bool function_body;
@@ -48,12 +52,48 @@ static int local_offset(Type *tp, int previous, Token *tok) {
 	int size = tp->kind == ARRAY && !tp->array_size ? 8 : MAX(size_of(tp), 8);
 	if (size > INT_MAX - 15 - previous)
 		error_at(tok->str, "関数のスタックサイズが大きすぎます。");
-	int offset = previous + size;
+	int alignment = align_of(tp);
+	int offset = (previous + size + alignment - 1) / alignment * alignment;
 	current_function->stack_size = MAX(current_function->stack_size, (offset + 15) / 16 * 16);
 	return offset;
 }
 
+static bool is_lvalue(Node *node) {
+    if (!node) return false;
+    if (node->kind == ND_MEMBER) return is_lvalue(node->lhs);
+    return node->kind == ND_LVAR || node->kind == ND_GVAR ||
+           node->kind == ND_DEREF || node->kind == ND_STR;
+}
+
+static void require_scalar(Node *node) {
+    Type *tp = node ? decay_type(node->tp) : NULL;
+    if (!tp || (tp->kind != INT && tp->kind != CHAR && tp->kind != PTR))
+        error_at(token->str, "scalar expression required");
+}
+
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
+    switch (kind) {
+    case ND_ADD: case ND_SUB: case ND_MUL: case ND_DIV:
+    case ND_EQL: case ND_NEQL: case ND_LST: case ND_LSE:
+    case ND_LOGAND: case ND_LOGOR:
+        require_scalar(lhs); require_scalar(rhs); break;
+    case ND_NOT:
+        require_scalar(lhs); break;
+    case ND_ASSIGN:
+        if (!is_lvalue(lhs)) error_at(token->str, "assignment requires an lvalue");
+        if (lhs->tp->kind != STRUCT && rhs->tp && rhs->tp->kind == STRUCT)
+            error_at(token->str, "struct cannot be assigned to a scalar");
+        break;
+    case ND_ADDR:
+        if (!is_lvalue(lhs)) error_at(token->str, "address requires an lvalue");
+        break;
+    case ND_RETURN:
+        if (lhs && lhs->tp && lhs->tp->kind == STRUCT)
+            error_at(token->str, "struct return ABI is unsupported");
+        break;
+    default: break;
+    }
+
 	Node *node      = calloc(1, sizeof(Node));
 	node->kind      = kind;
 	node->lhs       = lhs;
@@ -125,7 +165,16 @@ void program() {
     enter_scope();
 	while(!at_eof()) {
 		if (consume("typedef")) { typedef_decl(); continue; }
-		if(is_function()) {
+		Type *base = declspec();
+        if (consume(";")) {
+            if (base->kind != STRUCT) error_at(token->str, "declarator required");
+            continue;
+        }
+        pending_name = NULL;
+        pending_type = declarator(base, &pending_name);
+        bool function = token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(';
+        pending_base = base;
+        if(function) {
 			code[i++] = func();
 		}else{
 			global_decl();
@@ -134,14 +183,26 @@ void program() {
 	code[i] = NULL;
 }
 
+// The first file-scope declarator has already been parsed to distinguish a function.
+static Type *declaration_type(Type *base, Token **name) {
+    if (!pending_type) return declarator(base, name);
+    Type *tp = pending_type;
+    *name = pending_name;
+    pending_type = NULL;
+    pending_name = NULL;
+    return tp;
+}
+
 Node *func() {
 	locals = NULL;
 	Node *node = calloc(1, sizeof(Node));
 	current_function = node;
-    Type *ty = declspec();
+    Type *ty = pending_base ? pending_base : declspec();
+    pending_base = NULL;
     Token *tok;
 	tok = NULL;
-	ty = declarator(ty, &tok);
+	ty = declaration_type(ty, &tok);
+    if (ty->kind == STRUCT) error_at(tok->str, "struct return ABI is unsupported");
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	declare_name(tok);
     enter_scope();
@@ -210,6 +271,7 @@ Node *stmt() {
 	if (consume("if")) {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		Node *cond = expr();
+        require_scalar(cond);
 		if (!consume(")")) error_at(token->str, "')'でとじてください");
 		Node *then = stmt();
 		Node *els = NULL;
@@ -222,6 +284,7 @@ Node *stmt() {
 	if (consume("while")) {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		Node *cond = expr();
+        require_scalar(cond);
 		if (!consume(")")) error_at(token->str, "')'でとじてください");
 		loop_depth++;
 		Node *then = stmt();
@@ -245,6 +308,7 @@ Node *stmt() {
 		// cond
 		if (!consume(";")) {
 			node->cond = expr();
+            require_scalar(node->cond);
 			if(!consume(";")) error_at(token->str, "条件式を書いてください");
 		}
 		// inc
@@ -271,6 +335,10 @@ Node *stmt() {
 }
 
 Node *def_stmt(Type *tp){
+    if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == ';') {
+        if (tp->kind != STRUCT) error_at(token->str, "declarator required");
+        return new_node(ND_NOP, NULL, NULL);
+    }
 	Node *node = decl(tp);
 	while(consume(",")){
 		node = new_node(ND_DEF, node, decl(tp));
@@ -280,23 +348,27 @@ Node *def_stmt(Type *tp){
 
 void global_decl()
 {
-    Type *ty = declspec();
+    Type *ty = pending_base ? pending_base : declspec();
+    pending_base = NULL;
 	decl_global(ty);
+    while (consume(",")) decl_global(ty);
 	expect(';');
 }
 
 void decl_global(Type *ty)
 {
 	Token *tok = NULL;
-	ty = declarator(ty, &tok);
+	ty = declaration_type(ty, &tok);
     if (ty->kind == VOID) error_at(tok->str, "void object");
+    size_of(ty);
 	GVar *gvar = calloc(1, sizeof(GVar));
 	declare_name(tok);
 	gvar->name = strndup(tok->str, tok->len);
 	gvar->len  = tok->len;
 	gvar->tp   = ty;
 	if(consume("=")) {
-		Node *node = expr();
+		if (ty->kind == STRUCT || ty->kind == ARRAY) error_at(tok->str, "aggregate global initializer unsupported");
+        Node *node = assign();
 		gvar->val = eval_const_expr(node);
 	}
 	gvar->next = globals;
@@ -312,7 +384,11 @@ Type *_typename(Token *tok) {
 Type *type(Token *tok) { return _typename(tok); }
 Type *declspec(void) {
     Token *tok = token;
-    if (tok->kind == TK_TYPE) { token = token->next; return _typename(tok); }
+    if (tok->kind == TK_TYPE) {
+        token = token->next;
+        if (tok->len == 6 && !memcmp(tok->str, "struct", 6)) return struct_specifier();
+        return _typename(tok);
+    }
     VarScope *v = find_name(tok);
     if (!v || !v->typedef_type) error_at(tok->str, "type required");
     token = token->next; return v->typedef_type;
@@ -325,21 +401,30 @@ static Type *type_suffix(Type *base) {
         if (len <= 0) error_at(token->str, "array size must be positive");
     }
     Type *element = type_suffix(base);
-    if (element->kind == VOID || (element->kind == ARRAY && !element->array_size))
+    if (element->kind == VOID || (element->kind == STRUCT && !element->complete) || (element->kind == ARRAY && !element->array_size))
         error_at(token->str, "array element must be complete");
     Type *tp = new_type(ARRAY, element); tp->array_size = len; return tp;
 }
+// Only newly constructed pointer/array wrappers lead to the hole; the base type
+// is attached by identity so typedefs and tagged structs remain shared.
+static Type *fill_declarator_hole(Type *tp, Type *hole, Type *base) {
+    if (tp == hole) return base;
+    tp->ptr_to = fill_declarator_hole(tp->ptr_to, hole, base);
+    if (tp->kind == ARRAY &&
+        (tp->ptr_to->kind == VOID ||
+         (tp->ptr_to->kind == STRUCT && !tp->ptr_to->complete) ||
+         (tp->ptr_to->kind == ARRAY && !tp->ptr_to->array_size)))
+        error_at(token->str, "array element must be complete");
+    return tp;
+}
+
 static Type *parse_declarator(Type *base, Token **name, bool abstract) {
     while (consume("*")) base = new_type(PTR, base);
     if (consume("(")) {
-        Token *start = token;
-        Type dummy = {0};
-        parse_declarator(&dummy, name, abstract); expect(')');
-        base = type_suffix(base);
-        Token *end = token;
-        token = start;
-        Type *result = parse_declarator(base, name, abstract); expect(')');
-        token = end; return result;
+        Type *hole = new_type(INT, NULL);
+        Type *inner = parse_declarator(hole, name, abstract);
+        expect(')');
+        return fill_declarator_hole(inner, hole, type_suffix(base));
     }
     if (token->kind == TK_IDENT) *name = consume_ident();
     else if (!abstract) error_at(token->str, "identifier required");
@@ -375,6 +460,8 @@ Node *decl(Type *tp){
 	if(consume("=")){
 		node->kind = ND_LVAR;
 		Node *rhs = assign();
+        if (tp->kind == STRUCT && !compatible_type(tp, rhs->tp))
+            error_at(tok->str, "incompatible struct initializer");
 		if (tp->kind == ARRAY) {
 			if (tp->ptr_to->kind != CHAR || rhs->kind != ND_STR)
 				error_at(tok->str, "配列の初期化には文字配列と文字列が必要です。");
@@ -409,7 +496,7 @@ Node *expr() {
 }
 
 static Node *new_update(NodeKind kind, Node *lhs, Node *rhs, Token *op) {
-	if (!lhs->tp || (lhs->kind != ND_LVAR && lhs->kind != ND_GVAR && lhs->kind != ND_DEREF) ||
+	if (!lhs->tp || !is_lvalue(lhs) ||
 	    (lhs->tp->kind != INT && lhs->tp->kind != CHAR && lhs->tp->kind != PTR))
 		error_at(op->str, "左辺には書き換え可能な整数かポインタが必要です。");
 	if (lhs->tp->kind == PTR) {
@@ -430,7 +517,10 @@ Node *assign() {
 	if(consume("=")) {
 		if (node->tp && node->tp->kind == ARRAY)
 			error_at(token->str, "配列には代入できません。");
-		node = new_node(ND_ASSIGN, node, assign());
+		Node *rhs = assign();
+        if (node->tp && node->tp->kind == STRUCT && !compatible_type(node->tp, rhs->tp))
+            error_at(token->str, "incompatible struct assignment");
+        node = new_node(ND_ASSIGN, node, rhs);
 		node->tp = node->lhs->tp;
 	}
 	else {
@@ -496,6 +586,7 @@ static void pointer_element(Type *tp) {
 
 bool compatible_type(Type *a, Type *b) {
     if (!a || !b || a->kind != b->kind) return false;
+    if (a->kind == STRUCT) return a == b;
     if (a->kind == PTR) return compatible_type(a->ptr_to, b->ptr_to);
     if (a->kind == ARRAY) return a->array_size == b->array_size && compatible_type(a->ptr_to, b->ptr_to);
     return true;
@@ -632,6 +723,8 @@ static Node *primary_atom() {
 			for(int i=0;!consume(")");i++){
 				if(i > 0 && !consume(",")) error_at(token->str, "','が必要です。");
 				node->call_args[i] = assign();
+                if (node->call_args[i]->tp && node->call_args[i]->tp->kind == STRUCT)
+                    error_at(tok->str, "struct argument ABI is unsupported");
 			}
 			return node;
 		}
@@ -698,6 +791,28 @@ Node *primary() {
 			node->tp = node->lhs->tp->ptr_to;
 			continue;
 		}
+        Token *member_op = token;
+        bool arrow = consume("->");
+        if (arrow || consume(".")) {
+            if (arrow) {
+                Type *ptr = decay_type(node->tp);
+                if (!ptr || ptr->kind != PTR) error_at(member_op->str, "arrow requires a pointer");
+                node = new_node(ND_DEREF, node, NULL);
+                node->tp = ptr->ptr_to;
+            }
+            if (!node->tp || node->tp->kind != STRUCT || !node->tp->complete)
+                error_at(member_op->str, "member access requires a complete struct");
+            Token *name = consume_ident();
+            if (!name) error_at(token->str, "member name required");
+            Member *m = node->tp->members;
+            for (; m; m = m->next)
+                if (m->len == name->len && !memcmp(m->name, name->str, m->len)) break;
+            if (!m) error_at(name->str, "unknown struct member");
+            node = new_node(ND_MEMBER, node, NULL);
+            node->tp = m->tp;
+            node->offset = m->offset;
+            continue;
+        }
 		Token *op = token;
 		if (consume("++")) node = new_update(ND_POST_INC, node, NULL, op);
 		else if (consume("--")) node = new_update(ND_POST_DEC, node, NULL, op);
@@ -785,6 +900,7 @@ int consume_paramList(Node *node, Type *ty) {
         tok = NULL;
         param_ty = declarator(param_ty, &tok);
         param_ty = decay_type(param_ty);
+        if (param_ty->kind == STRUCT) error_at(token->str, "struct parameter ABI is unsupported");
         if (param_ty->kind == VOID)
             error_at(tok->str, "voidは単独の引数リストでのみ使えます。");
         if (!tok)
@@ -978,7 +1094,7 @@ void tokenize(char *p) {
 		}
 
 		if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
-				!memcmp(p, "++", 2) || !memcmp(p, "--", 2) ||
+				!memcmp(p, "->", 2) || !memcmp(p, "++", 2) || !memcmp(p, "--", 2) ||
 				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2) ||
 				!memcmp(p, "&&", 2) || !memcmp(p, "||", 2) ||
 				!memcmp(p, "+=", 2) || !memcmp(p, "-=", 2) || !memcmp(p, "*=", 2) || !memcmp(p, "/=", 2)
@@ -990,7 +1106,7 @@ void tokenize(char *p) {
 		}
 
 		if (*p == '+' || *p == '-' || *p == '*' || *p == '/' ||
-				*p == '<' || *p == '>' || *p == '&' || *p == '!') {
+				*p == '<' || *p == '>' || *p == '&' || *p == '!' || *p == '.') {
 			cur = new_token(TK_RESERVED, cur, p++);
 			cur->len = 1;
 			continue;
@@ -1030,4 +1146,77 @@ void tokenize(char *p) {
     }
     new_token(TK_EOF, cur, p++);
 	token = head.next;
+}
+
+typedef struct TagScope TagScope;
+struct TagScope { TagScope *next; Token *name; Type *tp; Scope *owner; };
+static TagScope *find_tag(Token *name) {
+    for (Scope *s = scope; s; s = s->next)
+        for (TagScope *t = s->tags; t; t = t->next)
+            if (same_name(t->name, name)) return t;
+    return NULL;
+}
+static void push_tag(Token *name, Type *tp) {
+    TagScope *t = calloc(1, sizeof(TagScope));
+    t->name = name; t->tp = tp; t->owner = scope;
+    t->next = scope->tags; scope->tags = t;
+}
+static Type *struct_specifier(void) {
+    Token *tag = consume_ident();
+    Type *ty = NULL;
+    bool definition = token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '{';
+    bool standalone = token->kind == TK_RESERVED && token->len == 1 && token->str[0] == ';';
+    if (tag) {
+        TagScope *entry = find_tag(tag);
+        if (entry && (!(definition || standalone) || entry->owner == scope)) ty = entry->tp;
+    }
+    if (!ty) {
+        // Publish an incomplete type before parsing members so self pointers share it.
+        ty = new_type(STRUCT, NULL);
+        ty->alignment = 1;
+        if (tag) push_tag(tag, ty);
+    }
+    if (!consume("{")) {
+        if (!tag) error_at(token->str, "struct needs a tag or definition");
+        return ty;
+    }
+    if (ty->complete || ty->defining) error_at(tag->str, "duplicate struct definition");
+    ty->defining = true;
+    Member head = {0};
+    Member *cur = &head;
+    int offset = 0;
+    while (!consume("}")) {
+        Type *base = declspec();
+        do {
+            Token *name = NULL;
+            Type *member_ty = declarator(base, &name);
+            if (!name) error_at(token->str, "member name required");
+            for (Member *m = head.next; m; m = m->next)
+                if (m->len == name->len && !memcmp(m->name, name->str, m->len))
+                    error_at(name->str, "duplicate member");
+            if (member_ty->kind == ARRAY && !member_ty->array_size)
+                error_at(name->str, "incomplete member array");
+            int alignment = align_of(member_ty);
+            int size = size_of(member_ty);
+            if (size > INT_MAX - offset - alignment)
+                error_at(name->str, "struct too large");
+            offset = (offset + alignment - 1) / alignment * alignment;
+            Member *m = calloc(1, sizeof(Member));
+            m->name = name->str;
+            m->len = name->len;
+            m->tp = member_ty;
+            m->offset = offset;
+            offset += size;
+            ty->alignment = MAX(ty->alignment, alignment);
+            cur = cur->next = m;
+        } while (consume(","));
+        expect(';');
+    }
+    if (!head.next) error_at(token->str, "struct needs a member");
+    ty->members = head.next;
+    // Round the final size so each element in a struct array remains aligned.
+    ty->size = (offset + ty->alignment - 1) / ty->alignment * ty->alignment;
+    ty->defining = false;
+    ty->complete = true;
+    return ty;
 }

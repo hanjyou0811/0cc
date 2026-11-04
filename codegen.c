@@ -11,7 +11,6 @@ static void gen_stmt(Node *node) {
 void gen_lval(Node *node) {
 	switch (node->kind) {
 	case ND_LVAR:
-		// if(node->tp->kind == ARRAY) return ;
 		println("	mov rax, rbp");
 		println("	sub rax, %d", node->offset);
 		println("	push rax");
@@ -20,6 +19,12 @@ void gen_lval(Node *node) {
 		println("	lea rax, [rip + %s]", node->gvar_name);
 		println("	push rax");
 		return ;
+	case ND_MEMBER:
+		gen(node->lhs);
+		println("\tpop rax");
+		println("\tadd rax, %d", node->offset);
+		println("\tpush rax");
+		return;
 	case ND_DEREF:
 		gen(node->lhs);
 		return ;
@@ -116,9 +121,10 @@ void gen(Node *node) {
 		println("\tpop rax");
 		gen(node->rhs);
 		return ;
+	case ND_MEMBER:
 	case ND_LVAR:
 		gen_lval(node);
-		if(node->tp && node->tp->kind == ARRAY) return ;
+		if(node->tp && (node->tp->kind == ARRAY || node->tp->kind == STRUCT)) return ;
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
 		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
@@ -138,6 +144,14 @@ void gen(Node *node) {
 		gen(node->rhs);
 		println("	pop rdi");
 		println("	pop rax");
+		if (node->tp && node->tp->kind == STRUCT) {
+			for (int i = 0; i < size_of(node->tp); i++) {
+				println("\tmov cl, BYTE PTR [rdi + %d]", i);
+				println("\tmov BYTE PTR [rax + %d], cl", i);
+			}
+			println("\tpush rax");
+			return;
+		}
 		if(node->tp && node->tp->kind == CHAR) println("	mov BYTE PTR [rax], dil");
 		else if(node->tp && node->tp->kind == INT) {
 			println("	mov DWORD PTR [rax], edi");
@@ -277,7 +291,7 @@ void gen(Node *node) {
 		return ;
 	case ND_DEREF:
 		gen(node->lhs);
-		if (node->tp && node->tp->kind == ARRAY) return ;
+		if (node->tp && (node->tp->kind == ARRAY || node->tp->kind == STRUCT)) return ;
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
 		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
@@ -290,8 +304,8 @@ void gen(Node *node) {
 		println("	push %d", size_of(node->lhs->tp));
 		return ;
 	case ND_GVAR:
-		if(node->tp && node->tp->kind == ARRAY) { gen_lval(node); return; }	
 		gen_lval(node);
+		if(node->tp && (node->tp->kind == ARRAY || node->tp->kind == STRUCT)) return;
 		println("	pop rax");
 		if(node->tp && node->tp->kind == CHAR) println("	movsx rax, BYTE PTR [rax]");
 		else if(node->tp && node->tp->kind == INT) println("	movsxd rax, DWORD PTR [rax]");
@@ -362,7 +376,7 @@ void gen_gval()
 		Type *element = gvar->tp;
 		while(element->kind == ARRAY)
 			element = element->ptr_to;
-		println("\t.balign %d", size_of(element));
+		println("\t.balign %d", align_of(element));
 		println("%s:", gvar->name);
 		if(!gvar->val)
 			println("\t.zero %d", size_of(gvar->tp));
