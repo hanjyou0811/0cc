@@ -61,6 +61,7 @@ typedef enum {
         ND_FOR,		// for
 	ND_COMMA,	// ','
 	ND_BLOCK,	// {}
+        ND_NOP,         // empty statement
 	ND_CALL,        // call function
         ND_FUNC,	// func def
 	ND_ADDR,	// &x

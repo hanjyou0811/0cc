@@ -115,6 +115,7 @@ Node *block(){
 
 Node *stmt() {
 	Node *node;
+	if (consume(";")) return new_node(ND_NOP, NULL, NULL);
 	
 	if (consume("if")) {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");

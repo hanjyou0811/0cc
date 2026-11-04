@@ -25,6 +25,8 @@ void gen_lval(Node *node) {
 void gen(Node *node) {
 	if(!node) return ;
 	switch (node->kind) {
+	case ND_NOP:
+		return;
 	case ND_NUM:
 		println("	push %d", node->val);
 		return ;
@@ -103,10 +105,12 @@ void gen(Node *node) {
 		id = lavel_id++;
 		gen(node->init);
 		println(".Lbegin%03d:", id);
-		gen(node->cond);
-		println("	pop rax");
-		println("	cmp rax, 0");
-		println("	je .Lend%03d", id);
+		if (node->cond) {
+			gen(node->cond);
+			println("	pop rax");
+			println("	cmp rax, 0");
+			println("	je .Lend%03d", id);
+		}
 		gen(node->body);
 		gen(node->inc);
 		println("	jmp .Lbegin%03d", id);
@@ -122,7 +126,7 @@ void gen(Node *node) {
 			if(has_value(node->stmts[i]))
 				println("	pop rax");
 		}
-		gen(node->stmts[j-1]);
+		if (j > 0) gen(node->stmts[j-1]);
 		return ;
 	case ND_CALL:
 		int argc = 0;
