@@ -1,6 +1,8 @@
 #include "0cc.h"
 
 Node *code[100];
+static int loop_depth;
+static Type *return_type;
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
 	Node *node      = calloc(1, sizeof(Node));
@@ -95,7 +97,10 @@ Node *func() {
 		error_at(token->str, "'('が来るべきです。");
 	if(!consume(")")) 
 		node->argc = consume_paramList(node, ty);
+	return_type = ty;
+	loop_depth = 0;
 	node->body = block();
+	return_type = NULL;
 	return node;
 }
 
@@ -116,6 +121,30 @@ Node *block(){
 Node *stmt() {
 	Node *node;
 	if (consume(";")) return new_node(ND_NOP, NULL, NULL);
+	Token *start = token;
+	if (consume("break")) {
+		if (!loop_depth) error_at(start->str, "breakはループ内でのみ使えます。");
+		expect(';');
+		return new_node(ND_BREAK, NULL, NULL);
+	}
+	if (consume("continue")) {
+		if (!loop_depth) error_at(start->str, "continueはループ内でのみ使えます。");
+		expect(';');
+		return new_node(ND_CONTINUE, NULL, NULL);
+	}
+	if (consume("return")) {
+		Node *value = NULL;
+		if (consume(";")) {
+			if (return_type->kind != VOID)
+				error_at(start->str, "戻り値が必要です。");
+		} else {
+			value = expr();
+			expect(';');
+			if (return_type->kind == VOID)
+				error_at(start->str, "void関数では値を返せません。");
+		}
+		return new_node(ND_RETURN, value, NULL);
+	}
 	
 	if (consume("if")) {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
@@ -133,7 +162,9 @@ Node *stmt() {
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		Node *cond = expr();
 		if (!consume(")")) error_at(token->str, "')'でとじてください");
+		loop_depth++;
 		Node *then = stmt();
+		loop_depth--;
 		node = new_node_while(cond, then);
 		return node;
 	}
@@ -160,15 +191,16 @@ Node *stmt() {
 			node->inc = expr();
 			if(!consume(")")) error_at(token->str, "')'でとじてください");
 		}
+		loop_depth++;
 		node->body = stmt();
+		loop_depth--;
 		return node;
 	}
 	if (token->str[0] == '{') {
 		return block();
 	}
 	Token *tok = consume_kind(TK_TYPE);
-	if(consume("return")) node = new_node(ND_RETURN, expr(), NULL);
-	else if(tok) { 
+	if(tok) {
 		Type *ty = type(tok);
 		node = def_stmt(ty);
 	}
@@ -198,6 +230,7 @@ void global_decl()
 
 void decl_global(Type *ty)
 {
+	if (ty->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
 	Token *tok = consume_ident();
 	GVar *gvar = calloc(1, sizeof(GVar));
 	gvar->name = strndup(tok->str, tok->len);
@@ -225,11 +258,13 @@ Type *_typename(Token *tok)
 	Typename tp;
 	if(!memcmp(tok->str, "int", 3)) tp = INT;
 	else if(!memcmp(tok->str, "char", 4)) tp = CHAR;
+	else if(!memcmp(tok->str, "void", 4)) tp = VOID;
 	Type *ty = new_type(tp, NULL);
 	return ty;
 }
 
 Node *decl(Type *tp){
+	if (tp->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
 	Token *tok = consume_ident();
 	if(!tok) error_at(token->str, "識別子が来るべきです。");
 	bool infer_size = false;
@@ -616,6 +651,13 @@ Token *consume_ident() {
 }
 
 int consume_paramList(Node *node, Type *ty) {
+    if (token->kind == TK_TYPE && token->len == 4 &&
+        !memcmp(token->str, "void", 4) &&
+        token->next->kind == TK_RESERVED && token->next->len == 1 &&
+        token->next->str[0] == ')') {
+        token = token->next->next;
+        return 0;
+    }
     int i;
     for (i = 0; !consume(")"); i++) {
         if (i > 0 && !consume(","))
@@ -624,6 +666,8 @@ int consume_paramList(Node *node, Type *ty) {
         if(!tok)
 			error_at(token->str, "型が必要です。");
         Type *param_ty = type(tok);
+        if (param_ty->kind == VOID)
+            error_at(tok->str, "voidは単独の引数リストでのみ使えます。");
         tok = consume_ident();
         if (!tok)
             error_at(token->str, "識別子が必要です。");
@@ -753,6 +797,18 @@ void tokenize(char *p) {
 			cur = new_token(TK_RESERVED, cur, p);
 			cur->len = 6;
 			p += 6;
+			continue;
+		}
+		if (match_token(p, "break")) {
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 5;
+			p += 5;
+			continue;
+		}
+		if (match_token(p, "continue")) {
+			cur = new_token(TK_RESERVED, cur, p);
+			cur->len = 8;
+			p += 8;
 			continue;
 		}
 		if (match_token(p, "if")) {
