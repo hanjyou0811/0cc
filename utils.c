@@ -21,7 +21,7 @@ int is_alnum(char c)
 int is_type(char *ident){
     return strcmp(ident, "int") == 0 ||
            strcmp(ident, "char") == 0 ||
-           strcmp(ident, "void") == 0;
+           strcmp(ident, "void") == 0 || strcmp(ident, "struct") == 0;
 }
 
 int match_token(char *str, char *tgt)
@@ -70,6 +70,9 @@ int size_of(Type *tp) {
         return 8;
 	case CHAR:
 		return 1;
+    case STRUCT:
+        if (!tp->complete) error("incomplete struct type");
+        return tp->size;
     case ARRAY:
         if (!tp->array_size) error("incomplete array has no size");
         if (tp->array_size > 2147483647 / size_of(tp->ptr_to)) error("object too large");
@@ -129,6 +132,7 @@ int has_value(Node *node)
 	case ND_NUM:
 	case ND_LVAR:
 	case ND_GVAR:
+	case ND_MEMBER:
 	case ND_ADD:
 	case ND_SUB:
 	case ND_MUL:
@@ -149,4 +153,10 @@ int has_value(Node *node)
 	}
 }
 
-int align_of(Type *tp) { return tp->kind == ARRAY ? align_of(tp->ptr_to) : size_of(tp); }
+int align_of(Type *tp) {
+    if (tp->kind == STRUCT) {
+        if (!tp->complete) error("incomplete struct type");
+        return tp->alignment;
+    }
+    return tp->kind == ARRAY ? align_of(tp->ptr_to) : size_of(tp);
+}
