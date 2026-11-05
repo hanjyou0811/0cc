@@ -189,6 +189,8 @@ void gen(Node *node) {
 			println("	pop %s", arg_addr[i]);
 		}
 		println("	call %s", node->func_name);
+		if (node->tp && node->tp->kind == CHAR) println("\tmovsx rax, al");
+		else if (node->tp && node->tp->kind == INT) println("\tmovsxd rax, eax");
 		println("	push rax");
 		// println("	ret");
 		return ;
