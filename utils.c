@@ -82,8 +82,6 @@ int is_function()
 	// type
 	if(t->kind != TK_TYPE) return false;
 	t = t->next;
-	while (t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '*')
-		t = t->next;
 	// ident
 	if(t->kind != TK_IDENT) return false;
 	t = t->next;
@@ -120,14 +118,6 @@ int has_value(Node *node)
 {
 	switch (node->kind) {
 	case ND_ASSIGN:
-	case ND_ADD_ASSIGN:
-	case ND_SUB_ASSIGN:
-	case ND_MUL_ASSIGN:
-	case ND_DIV_ASSIGN:
-	case ND_PRE_INC:
-	case ND_PRE_DEC:
-	case ND_POST_INC:
-	case ND_POST_DEC:
 		return 1;
 	case ND_STR:
 	case ND_COMMA:

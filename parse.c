@@ -22,9 +22,6 @@ Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
 	node->kind      = kind;
 	node->lhs       = lhs;
 	node->rhs       = rhs;
-	if (kind == ND_MUL || kind == ND_DIV || kind == ND_EQL ||
-	    kind == ND_NEQL || kind == ND_LST || kind == ND_LSE)
-		node->tp = new_type(INT, NULL);
 	return node;
 }
 
@@ -347,23 +344,6 @@ Node *expr() {
     return node;
 }
 
-static Node *new_update(NodeKind kind, Node *lhs, Node *rhs, Token *op) {
-	if (!lhs->tp || (lhs->kind != ND_LVAR && lhs->kind != ND_GVAR && lhs->kind != ND_DEREF) ||
-	    (lhs->tp->kind != INT && lhs->tp->kind != CHAR && lhs->tp->kind != PTR))
-		error_at(op->str, "左辺には書き換え可能な整数かポインタが必要です。");
-	if (lhs->tp->kind == PTR) {
-		if (kind == ND_MUL_ASSIGN || kind == ND_DIV_ASSIGN)
-			error_at(op->str, "ポインタには乗算・除算の複合代入を使えません。");
-		if (lhs->tp->ptr_to->kind == VOID)
-			error_at(op->str, "voidポインタの要素サイズは不明です。");
-	}
-	if (rhs && (!rhs->tp || (rhs->tp->kind != INT && rhs->tp->kind != CHAR)))
-		error_at(op->str, "複合代入の右辺には整数が必要です。");
-	Node *node = new_node(kind, lhs, rhs);
-	node->tp = lhs->tp;
-	return node;
-}
-
 Node *assign() {
 	Node *node = logical_or();
 	if(consume("=")) {
@@ -372,12 +352,22 @@ Node *assign() {
 		node = new_node(ND_ASSIGN, node, assign());
 		node->tp = node->lhs->tp;
 	}
-	else {
-		Token *op = token;
-		if (consume("+=")) return new_update(ND_ADD_ASSIGN, node, assign(), op);
-		if (consume("-=")) return new_update(ND_SUB_ASSIGN, node, assign(), op);
-		if (consume("*=")) return new_update(ND_MUL_ASSIGN, node, assign(), op);
-		if (consume("/=")) return new_update(ND_DIV_ASSIGN, node, assign(), op);
+	else if(consume("+=")) {
+		Node *rhs = new_add(node, assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}else if(consume("-=")) {
+		Node *rhs = new_sub(node, assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}else if(consume("*=")) {
+		Node *rhs = new_node(ND_MUL, node, assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
+	}else if(consume("/=")) {
+		Node *rhs = new_node(ND_DIV, node,assign());
+		node = new_node(ND_ASSIGN, node, rhs);
+		node->tp = node->lhs->tp;
 	}
 	return node;
 }
@@ -491,22 +481,12 @@ Node *mul() {
 }
 
 Node *unary() {
-	Token *op = token;
-	if (consume("++")) return new_update(ND_PRE_INC, unary(), NULL, op);
-	if (consume("--")) return new_update(ND_PRE_DEC, unary(), NULL, op);
 	if (consume("!")) {
 		Node *node = new_node(ND_NOT, unary(), NULL);
 		node->tp = new_type(INT, NULL);
 		return node;
 	}
-	if (consume("+")) {
-		Node *operand = unary();
-		if (!operand->tp || (operand->tp->kind != INT && operand->tp->kind != CHAR))
-			error_at(op->str, "単項+には整数が必要です。");
-		Node *node = new_node(ND_ADD, new_node_num(0), operand);
-		node->tp = new_type(INT, NULL);
-		return node;
-	}
+	if(consume("+")) return unary();
 	if(consume("-")) {
 		Node *node = new_node(ND_SUB, new_node_num(0), unary());
 		node->tp = new_type(INT, NULL);
@@ -616,20 +596,13 @@ static Node *primary_atom() {
 
 Node *primary() {
 	Node *node = primary_atom();
-	for (;;) {
-		if (consume("[")) {
-			Node *index = expr();
-			expect(']');
-			if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
-				error_at(token->str, "添字には配列かポインタが必要です。");
-			node = new_node(ND_DEREF, new_add(node, index), NULL);
-			node->tp = node->lhs->tp->ptr_to;
-			continue;
-		}
-		Token *op = token;
-		if (consume("++")) node = new_update(ND_POST_INC, node, NULL, op);
-		else if (consume("--")) node = new_update(ND_POST_DEC, node, NULL, op);
-		else break;
+	while (consume("[")) {
+		Node *index = expr();
+		expect(']');
+		if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
+			error_at(token->str, "添字には配列かポインタが必要です。");
+		node = new_node(ND_DEREF, new_add(node, index), NULL);
+		node->tp = node->lhs->tp->ptr_to;
 	}
 	return node;
 }
@@ -909,7 +882,6 @@ void tokenize(char *p) {
 		}
 
 		if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
-				!memcmp(p, "++", 2) || !memcmp(p, "--", 2) ||
 				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2) ||
 				!memcmp(p, "&&", 2) || !memcmp(p, "||", 2) ||
 				!memcmp(p, "+=", 2) || !memcmp(p, "-=", 2) || !memcmp(p, "*=", 2) || !memcmp(p, "/=", 2)
