@@ -30,6 +30,51 @@ void gen_lval(Node *node) {
 	error("代入の左辺値が変数でもポインタでもありません。");
 }
 
+static void gen_update(Node *node) {
+	Type *tp = node->lhs->tp;
+	bool postfix = node->kind == ND_POST_INC || node->kind == ND_POST_DEC;
+	gen_lval(node->lhs);
+	// Keep the destination and its old value across evaluation of the RHS.
+	println("\tmov rax, [rsp]");
+	if (tp->kind == CHAR) println("\tmovsx rax, BYTE PTR [rax]");
+	else if (tp->kind == INT) println("\tmovsxd rax, DWORD PTR [rax]");
+	else println("\tmov rax, [rax]");
+	println("\tpush rax");
+	if (node->rhs) gen(node->rhs);
+	else println("\tpush 1");
+	println("\tpop rdi");
+	println("\tpop rax");
+	println("\tpop rcx");
+	if (postfix) println("\tmov r8, rax");
+	if (tp->kind == PTR && size_of(tp->ptr_to) != 1)
+		println("\timul rdi, %d", size_of(tp->ptr_to));
+	switch (node->kind) {
+	case ND_ADD_ASSIGN: case ND_PRE_INC: case ND_POST_INC:
+		println("\tadd rax, rdi");
+		break;
+	case ND_SUB_ASSIGN: case ND_PRE_DEC: case ND_POST_DEC:
+		println("\tsub rax, rdi");
+		break;
+	case ND_MUL_ASSIGN:
+		println("\timul rax, rdi");
+		break;
+	case ND_DIV_ASSIGN:
+		println("\tcqo");
+		println("\tidiv rdi");
+		break;
+	default:
+		error("不明な更新演算子です。");
+	}
+	if (tp->kind == CHAR) {
+		println("\tmov BYTE PTR [rcx], al");
+		println("\tmovsx rax, al");
+	} else if (tp->kind == INT) {
+		println("\tmov DWORD PTR [rcx], eax");
+		println("\tmovsxd rax, eax");
+	} else println("\tmov [rcx], rax");
+	println("\tpush %s", postfix ? "r8" : "rax");
+}
+
 void gen(Node *node) {
 	if(!node) return ;
 	switch (node->kind) {
@@ -100,6 +145,16 @@ void gen(Node *node) {
 		}
 		else println("	mov [rax], rdi");
 		println("	push rdi");
+		return ;
+	case ND_ADD_ASSIGN:
+	case ND_SUB_ASSIGN:
+	case ND_MUL_ASSIGN:
+	case ND_DIV_ASSIGN:
+	case ND_PRE_INC:
+	case ND_PRE_DEC:
+	case ND_POST_INC:
+	case ND_POST_DEC:
+		gen_update(node);
 		return ;
 	case ND_BREAK:
 		println("\tjmp .Lend%03d", loop_id);
