@@ -527,6 +527,15 @@ static Node *primary_atom() {
 		if(consume("(")) {
 			node->kind = ND_CALL;
 			node->func_name = strndup(tok->str, tok->len);
+			node->tp = new_type(INT, NULL);
+			if (current_function && current_function->func_name &&
+			    !strcmp(current_function->func_name, node->func_name))
+				node->tp = current_function->tp;
+			for (int i = 0; code[i]; i++)
+				if (!strcmp(code[i]->func_name, node->func_name)) {
+					node->tp = code[i]->tp;
+					break;
+				}
 			add_extern_funcs(node->func_name);
 			if(consume(")")) return node;
 			for(int i=0;!consume(")");i++){
