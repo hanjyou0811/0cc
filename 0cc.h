@@ -87,7 +87,6 @@ struct LVar {
 	char *name;
 	int len;
 	int offset;
-        int scope_depth;
         Type *tp;
 };
 typedef struct GVar GVar;

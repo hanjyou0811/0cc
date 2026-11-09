@@ -9,12 +9,11 @@ typedef struct EnumEntry EnumEntry;
 struct EnumEntry {
     EnumEntry *next;
     Token *name;
-    int depth;
     int value;
     Type *type;
 };
 static EnumEntry *enum_tags, *enum_values;
-static int scope_depth;
+static bool in_function;
 static EnumEntry *find_enum(EnumEntry *entry, Token *name) {
     for (; entry; entry = entry->next)
         if (entry->name->len == name->len &&
@@ -22,20 +21,17 @@ static EnumEntry *find_enum(EnumEntry *entry, Token *name) {
     return NULL;
 }
 static void check_enum_name(Token *name) {
-    if (!scope_depth)
+    if (find_enum(enum_values, name) || find_lvar(name))
+        error_at(name->str, "duplicate enumerator or variable name");
+    if (!in_function) {
+        if (find_gvar(name)) error_at(name->str, "duplicate enumerator or variable name");
         for (int i = 0; code[i]; i++)
             if (strlen(code[i]->func_name) == name->len &&
                 !memcmp(code[i]->func_name, name->str, name->len))
                 error_at(name->str, "duplicate enumerator or function name");
-    EnumEntry *entry = find_enum(enum_values, name);
-    LVar *local = find_lvar(name);
-    if ((entry && entry->depth == scope_depth) ||
-        (local && local->scope_depth == scope_depth) ||
-        (!scope_depth && find_gvar(name)))
-        error_at(name->str, "duplicate enumerator or variable name");
+    }
 }
 static Type *enum_type(void);
-static Node *block_in_scope(bool enter_scope);
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
 	Node *node      = calloc(1, sizeof(Node));
@@ -124,14 +120,15 @@ static Type *enum_type(void) {
         if (!entry) error_at(tag ? tag->str : token->str, "unknown enum tag");
         return entry->type;
     }
+    if (in_function)
+        error_at(token->str, "enum definitions are only supported at file scope");
     Type *ty = new_type(INT, NULL);
     ty->enum_identity = ty;
     if (tag) {
-        if (entry && entry->depth == scope_depth)
+        if (entry)
             error_at(tag->str, "duplicate enum tag");
         entry = calloc(1, sizeof(EnumEntry));
         entry->name = tag;
-        entry->depth = scope_depth;
         entry->type = ty;
         entry->next = enum_tags;
         enum_tags = entry;
@@ -146,7 +143,6 @@ static Type *enum_type(void) {
             error_at(name->str, "enumerator value is outside int range");
         entry = calloc(1, sizeof(EnumEntry));
         entry->name = name;
-        entry->depth = scope_depth;
         entry->value = value++;
         entry->next = enum_values;
         enum_values = entry;
@@ -177,7 +173,6 @@ Node *func() {
 		error_at(token->str, "型を書いてください。");
 	}
 	Type *ty = type(tok);
-	EnumEntry *saved_tags = enum_tags, *saved_values = enum_values;
 	tok = consume_kind(TK_IDENT);
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	check_enum_name(tok);
@@ -186,30 +181,22 @@ Node *func() {
 	node->tp = ty;
 	if(!consume("(")) 
 		error_at(token->str, "'('が来るべきです。");
-	scope_depth++;
+	in_function = true;
 	if(!consume(")")) 
 		node->argc = consume_paramList(node, ty);
 	return_type = ty;
 	loop_depth = 0;
-	node->body = block_in_scope(false);
+	node->body = block();
 	return_type = NULL;
-	scope_depth--;
-	enum_tags = saved_tags;
-	enum_values = saved_values;
+	in_function = false;
 	locals = NULL;
 	return node;
 }
 
-Node *block() {
-    return block_in_scope(true);
-}
-
-static Node *block_in_scope(bool enter_scope) {
+Node *block(){
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_BLOCK;
 	LVar *saved = locals;
-	EnumEntry *saved_tags = enum_tags, *saved_values = enum_values;
-	if (enter_scope) scope_depth++;
 	if(!consume("{")) error_at(token->str, "'{'が必要です。");
     int i = 0;
     while (!consume("}")) {
@@ -217,9 +204,6 @@ static Node *block_in_scope(bool enter_scope) {
     }
     node->stmts[i] = NULL;
 	locals = saved;
-	enum_tags = saved_tags;
-	enum_values = saved_values;
-	if (enter_scope) scope_depth--;
 	return node;
 }
 
@@ -274,9 +258,6 @@ Node *stmt() {
 		return node;
 	}
 	if (consume("for")) {
-		EnumEntry *saved_tags = enum_tags, *saved_values = enum_values;
-		LVar *saved_locals = locals;
-		scope_depth++;
 		node = new_node(ND_FOR, NULL, NULL);
 		if (!consume("(")) error_at(token->str, "'('ではじめてください");
 		// init
@@ -302,10 +283,6 @@ Node *stmt() {
 		loop_depth++;
 		node->body = stmt();
 		loop_depth--;
-		enum_tags = saved_tags;
-		enum_values = saved_values;
-		locals = saved_locals;
-		scope_depth--;
 		return node;
 	}
 	if (token->str[0] == '{') {
@@ -402,7 +379,6 @@ Node *decl(Type *tp){
 	if (find_lvar(tok) || find_gvar(tok))
 		error_at(tok->str, "既に定義されている変数です。");
 	LVar *lvar = calloc(1, sizeof(LVar));
-	lvar->scope_depth = scope_depth;
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
@@ -644,7 +620,7 @@ static Node *primary_atom() {
 		else node->kind = ND_LVAR;
 		LVar *lvar = find_lvar(tok);
 		EnumEntry *value = find_enum(enum_values, tok);
-		if (value && (!lvar || value->depth > lvar->scope_depth))
+		if (value)
 			return new_node_num(value->value);
 		if (lvar) {
 			node->offset = lvar->offset;
@@ -796,7 +772,6 @@ int consume_paramList(Node *node, Type *ty) {
             error_at(token->str, "識別子が必要です。");
         check_enum_name(tok);
         LVar *var = calloc(1, sizeof(LVar));
-        var->scope_depth = scope_depth;
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
