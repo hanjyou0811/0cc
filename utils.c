@@ -96,7 +96,13 @@ int is_function()
 	while (t->kind == TK_RESERVED && t->str[0] == '*') t = t->next;
 	if (t->kind != TK_IDENT) return false;
 	t = t->next;
-	return t->kind == TK_RESERVED && t->str[0] == '(';
+	while (t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '*')
+		t = t->next;
+	// ident
+	if(t->kind != TK_IDENT) return false;
+	t = t->next;
+	// "("
+	return (t->kind == TK_RESERVED && t->str[0] == '(');
 }
 
 char *read_file(char *path) {
@@ -128,6 +134,14 @@ int has_value(Node *node)
 {
 	switch (node->kind) {
 	case ND_ASSIGN:
+	case ND_ADD_ASSIGN:
+	case ND_SUB_ASSIGN:
+	case ND_MUL_ASSIGN:
+	case ND_DIV_ASSIGN:
+	case ND_PRE_INC:
+	case ND_PRE_DEC:
+	case ND_POST_INC:
+	case ND_POST_DEC:
 		return 1;
 	case ND_STR:
 	case ND_COMMA:

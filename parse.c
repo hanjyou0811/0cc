@@ -1,8 +1,21 @@
 #include "0cc.h"
+#include <limits.h>
 
 Node *code[100];
 static int loop_depth;
 static Type *return_type;
+static Node *current_function;
+
+static int local_offset(Type *tp, int previous, Token *tok) {
+	if (tp->kind == ARRAY && tp->array_size > INT_MAX / size_of(tp->ptr_to))
+		error_at(tok->str, "ローカル変数のサイズが大きすぎます。");
+	int size = MAX(size_of(tp), 8);
+	if (size > INT_MAX - 15 - previous)
+		error_at(tok->str, "関数のスタックサイズが大きすぎます。");
+	int offset = previous + size;
+	current_function->stack_size = MAX(current_function->stack_size, (offset + 15) / 16 * 16);
+	return offset;
+}
 
 // Enum tags occupy a separate namespace; enumerators share ordinary names.
 typedef struct EnumEntry EnumEntry;
@@ -38,6 +51,9 @@ Node *new_node(NodeKind kind, Node *lhs, Node *rhs){
 	node->kind      = kind;
 	node->lhs       = lhs;
 	node->rhs       = rhs;
+	if (kind == ND_MUL || kind == ND_DIV || kind == ND_EQL ||
+	    kind == ND_NEQL || kind == ND_LST || kind == ND_LSE)
+		node->tp = new_type(INT, NULL);
 	return node;
 }
 
@@ -168,6 +184,7 @@ void program() {
 Node *func() {
 	locals = NULL;
 	Node *node = calloc(1, sizeof(Node));
+	current_function = node;
 	Token *tok = consume_kind(TK_TYPE);
 	if(!tok){
 		error_at(token->str, "型を書いてください。");
@@ -382,7 +399,7 @@ Node *decl(Type *tp){
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
-	lvar->offset = (locals ? locals->offset : 0) + MAX(size_of(tp), 8);
+	lvar->offset = local_offset(tp, locals ? locals->offset : 0, tok);
 	lvar->next = locals;
 	locals = lvar;
 
@@ -398,7 +415,7 @@ Node *decl(Type *tp){
 				error_at(tok->str, "配列の初期化には文字配列と文字列が必要です。");
 			if (infer_size) {
 				tp->array_size = rhs->val;
-				lvar->offset = (lvar->next ? lvar->next->offset : 0) + MAX(size_of(tp), 8);
+				lvar->offset = local_offset(tp, lvar->next ? lvar->next->offset : 0, tok);
 				node->offset = lvar->offset;
 			}
 			// C permits an exact fit without the terminating NUL.
@@ -426,6 +443,23 @@ Node *expr() {
     return node;
 }
 
+static Node *new_update(NodeKind kind, Node *lhs, Node *rhs, Token *op) {
+	if (!lhs->tp || (lhs->kind != ND_LVAR && lhs->kind != ND_GVAR && lhs->kind != ND_DEREF) ||
+	    (lhs->tp->kind != INT && lhs->tp->kind != CHAR && lhs->tp->kind != PTR))
+		error_at(op->str, "左辺には書き換え可能な整数かポインタが必要です。");
+	if (lhs->tp->kind == PTR) {
+		if (kind == ND_MUL_ASSIGN || kind == ND_DIV_ASSIGN)
+			error_at(op->str, "ポインタには乗算・除算の複合代入を使えません。");
+		if (lhs->tp->ptr_to->kind == VOID)
+			error_at(op->str, "voidポインタの要素サイズは不明です。");
+	}
+	if (rhs && (!rhs->tp || (rhs->tp->kind != INT && rhs->tp->kind != CHAR)))
+		error_at(op->str, "複合代入の右辺には整数が必要です。");
+	Node *node = new_node(kind, lhs, rhs);
+	node->tp = lhs->tp;
+	return node;
+}
+
 Node *assign() {
 	Node *node = logical_or();
 	if(consume("=")) {
@@ -434,22 +468,12 @@ Node *assign() {
 		node = new_node(ND_ASSIGN, node, assign());
 		node->tp = node->lhs->tp;
 	}
-	else if(consume("+=")) {
-		Node *rhs = new_add(node, assign());
-		node = new_node(ND_ASSIGN, node, rhs);
-		node->tp = node->lhs->tp;
-	}else if(consume("-=")) {
-		Node *rhs = new_sub(node, assign());
-		node = new_node(ND_ASSIGN, node, rhs);
-		node->tp = node->lhs->tp;
-	}else if(consume("*=")) {
-		Node *rhs = new_node(ND_MUL, node, assign());
-		node = new_node(ND_ASSIGN, node, rhs);
-		node->tp = node->lhs->tp;
-	}else if(consume("/=")) {
-		Node *rhs = new_node(ND_DIV, node,assign());
-		node = new_node(ND_ASSIGN, node, rhs);
-		node->tp = node->lhs->tp;
+	else {
+		Token *op = token;
+		if (consume("+=")) return new_update(ND_ADD_ASSIGN, node, assign(), op);
+		if (consume("-=")) return new_update(ND_SUB_ASSIGN, node, assign(), op);
+		if (consume("*=")) return new_update(ND_MUL_ASSIGN, node, assign(), op);
+		if (consume("/=")) return new_update(ND_DIV_ASSIGN, node, assign(), op);
 	}
 	return node;
 }
@@ -563,12 +587,22 @@ Node *mul() {
 }
 
 Node *unary() {
+	Token *op = token;
+	if (consume("++")) return new_update(ND_PRE_INC, unary(), NULL, op);
+	if (consume("--")) return new_update(ND_PRE_DEC, unary(), NULL, op);
 	if (consume("!")) {
 		Node *node = new_node(ND_NOT, unary(), NULL);
 		node->tp = new_type(INT, NULL);
 		return node;
 	}
-	if(consume("+")) return unary();
+	if (consume("+")) {
+		Node *operand = unary();
+		if (!operand->tp || (operand->tp->kind != INT && operand->tp->kind != CHAR))
+			error_at(op->str, "単項+には整数が必要です。");
+		Node *node = new_node(ND_ADD, new_node_num(0), operand);
+		node->tp = new_type(INT, NULL);
+		return node;
+	}
 	if(consume("-")) {
 		Node *node = new_node(ND_SUB, new_node_num(0), unary());
 		node->tp = new_type(INT, NULL);
@@ -609,6 +643,15 @@ static Node *primary_atom() {
 		if(consume("(")) {
 			node->kind = ND_CALL;
 			node->func_name = strndup(tok->str, tok->len);
+			node->tp = new_type(INT, NULL);
+			if (current_function && current_function->func_name &&
+			    !strcmp(current_function->func_name, node->func_name))
+				node->tp = current_function->tp;
+			for (int i = 0; code[i]; i++)
+				if (!strcmp(code[i]->func_name, node->func_name)) {
+					node->tp = code[i]->tp;
+					break;
+				}
 			add_extern_funcs(node->func_name);
 			if(consume(")")) return node;
 			for(int i=0;!consume(")");i++){
@@ -672,13 +715,20 @@ static Node *primary_atom() {
 
 Node *primary() {
 	Node *node = primary_atom();
-	while (consume("[")) {
-		Node *index = expr();
-		expect(']');
-		if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
-			error_at(token->str, "添字には配列かポインタが必要です。");
-		node = new_node(ND_DEREF, new_add(node, index), NULL);
-		node->tp = node->lhs->tp->ptr_to;
+	for (;;) {
+		if (consume("[")) {
+			Node *index = expr();
+			expect(']');
+			if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
+				error_at(token->str, "添字には配列かポインタが必要です。");
+			node = new_node(ND_DEREF, new_add(node, index), NULL);
+			node->tp = node->lhs->tp->ptr_to;
+			continue;
+		}
+		Token *op = token;
+		if (consume("++")) node = new_update(ND_POST_INC, node, NULL, op);
+		else if (consume("--")) node = new_update(ND_POST_DEC, node, NULL, op);
+		else break;
 	}
 	return node;
 }
@@ -775,10 +825,7 @@ int consume_paramList(Node *node, Type *ty) {
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
-        if (locals)
-            var->offset = locals->offset + MAX(size_of(locals->tp), 8);
-        else
-            var->offset = MAX(size_of(param_ty), 8);
+        var->offset = local_offset(param_ty, locals ? locals->offset : 0, tok);
         var->next = locals;
         locals = var;
 
@@ -962,6 +1009,7 @@ void tokenize(char *p) {
 		}
 
 		if (!memcmp(p, ">=", 2) || !memcmp(p, "<=", 2) ||
+				!memcmp(p, "++", 2) || !memcmp(p, "--", 2) ||
 				!memcmp(p, "==", 2) || !memcmp(p, "!=", 2) ||
 				!memcmp(p, "&&", 2) || !memcmp(p, "||", 2) ||
 				!memcmp(p, "+=", 2) || !memcmp(p, "-=", 2) || !memcmp(p, "*=", 2) || !memcmp(p, "/=", 2)

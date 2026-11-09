@@ -53,6 +53,14 @@ typedef enum {
         ND_DIV,         // /
         ND_NUM,         // num
 	ND_ASSIGN,	// = 
+        ND_ADD_ASSIGN,	// +=
+        ND_SUB_ASSIGN,	// -=
+        ND_MUL_ASSIGN,	// *=
+        ND_DIV_ASSIGN,	// /=
+        ND_PRE_INC,
+        ND_PRE_DEC,
+        ND_POST_INC,
+        ND_POST_DEC,
         ND_EQL,         // ==
         ND_NEQL,        // !=
         ND_LST,         // <
@@ -127,6 +135,7 @@ struct Node {
         int argc;
 
         struct Type *tp;
+        int stack_size; // ND_FUNC: maximum local storage rounded to 16 bytes
 };
 
 void error(char *fmt, ...);
