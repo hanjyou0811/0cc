@@ -431,30 +431,47 @@ Type *decay_type(Type *tp) {
 }
 
 Node *new_add(Node *lhs, Node *rhs) {
-    Type *lt = decay_type(lhs->tp), *rt = decay_type(rhs->tp);
+    Type *lt = decay_type(lhs->tp);
+    Type *rt = decay_type(rhs->tp);
     Node *node;
+
+    if (integer_type(lt) && rt && rt->kind == PTR)
+        return new_add(rhs, lhs);
+
     if (lt && lt->kind == PTR && integer_type(rt)) {
-        node = new_node(ND_ADD, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
+        node = new_node(
+            ND_ADD, lhs,
+            new_node(ND_MUL, rhs,
+                     new_node_num(size_of(lt->ptr_to))));
         node->tp = lt;
-    } else {
-        if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to addition");
+    } else if (integer_type(lt) && integer_type(rt)) {
         node = new_node(ND_ADD, lhs, rhs);
         node->tp = new_type(INT, NULL);
+    } else {
+        error_at(token->str, "Mismatch !!! at new_add()");
     }
+
     return node;
 }
 
 Node *new_sub(Node *lhs, Node *rhs) {
-    Type *lt = decay_type(lhs->tp), *rt = decay_type(rhs->tp);
+    Type *lt = decay_type(lhs->tp);
+    Type *rt = decay_type(rhs->tp);
     Node *node;
+
     if (lt && lt->kind == PTR && integer_type(rt)) {
-        node = new_node(ND_SUB, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
+        node = new_node(
+            ND_SUB, lhs,
+            new_node(ND_MUL, rhs,
+                     new_node_num(size_of(lt->ptr_to))));
         node->tp = lt;
-    } else {
-        if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to subtraction");
+    } else if (integer_type(lt) && integer_type(rt)) {
         node = new_node(ND_SUB, lhs, rhs);
         node->tp = new_type(INT, NULL);
+    } else {
+        error_at(token->str, "Mismatch !!! at new_sub()");
     }
+
     return node;
 }
 
