@@ -1,17 +1,12 @@
 #include "0cc.h"
-#include <limits.h>
 
 Node *code[100];
 static int loop_depth;
 static Type *return_type;
 static Node *current_function;
 
-static int local_offset(Type *tp, int previous, Token *tok) {
-	if (tp->kind == ARRAY && tp->array_size > INT_MAX / size_of(tp->ptr_to))
-		error_at(tok->str, "ローカル変数のサイズが大きすぎます。");
-	int size = MAX(size_of(tp), 8);
-	if (size > INT_MAX - 15 - previous)
-		error_at(tok->str, "関数のスタックサイズが大きすぎます。");
+static int local_offset(Type *tp, int previous) {
+	int size = tp->kind == ARRAY && !tp->array_size ? 8 : MAX(size_of(tp), 8);
 	int offset = previous + size;
 	current_function->stack_size = MAX(current_function->stack_size, (offset + 15) / 16 * 16);
 	return offset;
@@ -190,7 +185,8 @@ Node *func() {
 		error_at(token->str, "型を書いてください。");
 	}
 	Type *ty = type(tok);
-	tok = consume_kind(TK_IDENT);
+	tok = NULL;
+	ty = declarator(ty, &tok);
 	if(!tok || tok->kind != TK_IDENT) error_at(token->str, "識別子が来るべきです。");
 	check_enum_name(tok);
 	node->kind = ND_FUNC;
@@ -339,9 +335,9 @@ void global_decl()
 
 void decl_global(Type *ty)
 {
-	if (ty->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
-	Token *tok = consume_ident();
-	if (!tok) error_at(token->str, "identifier required");
+	Token *tok = NULL;
+	ty = declarator(ty, &tok);
+    if (ty->kind == VOID) error_at(tok->str, "void object");
 	check_enum_name(tok);
 	GVar *gvar = calloc(1, sizeof(GVar));
 	gvar->name = strndup(tok->str, tok->len);
@@ -355,51 +351,59 @@ void decl_global(Type *ty)
 	globals = gvar;
 }
 
-Type *type(Token *tok)
-{
-	Type *ty = _typename(tok);
-	while(consume("*")){
-		ty = new_type(PTR, ty);
-	}
-	return ty;
+Type *_typename(Token *tok) {
+    if (tok->len == 4 && !memcmp(tok->str, "enum", 4)) return enum_type();
+    if (tok->len == 3 && !memcmp(tok->str, "int", 3)) return new_type(INT, NULL);
+    if (tok->len == 4 && !memcmp(tok->str, "char", 4)) return new_type(CHAR, NULL);
+    if (tok->len == 4 && !memcmp(tok->str, "void", 4)) return new_type(VOID, NULL);
+    error_at(tok->str, "type required"); return NULL;
 }
-
-Type *_typename(Token *tok)
-{
-	if (tok->len == 4 && !memcmp(tok->str, "enum", 4)) return enum_type();
-	Typename tp;
-	if(!memcmp(tok->str, "int", 3)) tp = INT;
-	else if(!memcmp(tok->str, "char", 4)) tp = CHAR;
-	else if(!memcmp(tok->str, "void", 4)) tp = VOID;
-	Type *ty = new_type(tp, NULL);
-	return ty;
+Type *type(Token *tok) { return _typename(tok); }
+Type *declspec(void) {
+    Token *tok = consume_kind(TK_TYPE);
+    if (!tok) error_at(token->str, "type required");
+    return _typename(tok);
 }
+static Type *type_suffix(Type *base) {
+    if (!consume("[")) return base;
+    int len = 0;
+    if (!consume("]")) {
+        len = eval_const_expr(assign()); expect(']');
+    }
+    if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '[')
+        error_at(token->str, "multidimensional arrays are not supported yet");
+    if (base->kind == VOID)
+        error_at(token->str, "array element must be complete");
+    Type *tp = new_type(ARRAY, base); tp->array_size = len; return tp;
+}
+static Type *parse_declarator(Type *base, Token **name, bool abstract) {
+    while (consume("*")) base = new_type(PTR, base);
+    if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(')
+        error_at(token->str, "parenthesized declarators are not supported yet");
+    if (!abstract) {
+        *name = consume_ident();
+        if (!*name) error_at(token->str, "identifier required");
+    } else if (token->kind == TK_IDENT) {
+        error_at(token->str, "type name cannot contain an identifier");
+    }
+    return type_suffix(base);
+}
+Type *declarator(Type *base, Token **name) { return parse_declarator(base, name, false); }
+Type *type_name(void) { Token *name = NULL; return parse_declarator(declspec(), &name, true); }
 
 Node *decl(Type *tp){
-	if (tp->kind == VOID) error_at(token->str, "void型の変数は宣言できません。");
-	Token *tok = consume_ident();
-	if(!tok) error_at(token->str, "識別子が来るべきです。");
+    Token *tok = NULL;
+    tp = declarator(tp, &tok);
+    if (tp->kind == VOID) error_at(tok->str, "void object");
+    bool infer_size = tp->kind == ARRAY && tp->array_size == 0;
 	check_enum_name(tok);
-	bool infer_size = false;
-	if(consume("[")){
-		int len = 0;
-		if (consume("]")) infer_size = true;
-		else {
-			len = eval_const_expr(expr());
-			expect(']');
-			if (len <= 0) error_at(tok->str, "配列サイズは正の整数が必要です。");
-		}
-		Type *arr = new_type(ARRAY, tp);
-		arr->array_size = len;
-		tp = arr;
-	}
 	if (find_lvar(tok) || find_gvar(tok))
 		error_at(tok->str, "既に定義されている変数です。");
 	LVar *lvar = calloc(1, sizeof(LVar));
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
-	lvar->offset = local_offset(tp, locals ? locals->offset : 0, tok);
+	lvar->offset = local_offset(tp, locals ? locals->offset : 0);
 	lvar->next = locals;
 	locals = lvar;
 
@@ -415,12 +419,9 @@ Node *decl(Type *tp){
 				error_at(tok->str, "配列の初期化には文字配列と文字列が必要です。");
 			if (infer_size) {
 				tp->array_size = rhs->val;
-				lvar->offset = local_offset(tp, lvar->next ? lvar->next->offset : 0, tok);
+				lvar->offset = local_offset(tp, lvar->next ? lvar->next->offset : 0);
 				node->offset = lvar->offset;
 			}
-			// C permits an exact fit without the terminating NUL.
-			if (rhs->val - 1 > tp->array_size)
-				error_at(tok->str, "文字列が配列の初期化サイズを超えています。");
 			node = new_node(ND_ARRAY_INIT, node, rhs);
 		} else {
 			node = new_node(ND_ASSIGN, node, rhs);
@@ -518,52 +519,55 @@ Node *relational() {
         }
 }
 
-Node *new_add(Node *lhs, Node *rhs)
-{
-	Node *node = new_node(ND_ADD, lhs, rhs);
-	if(lhs->tp && rhs->tp){
-		if (lhs->tp->kind == INT && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY))
-		{
-			Node *tmp = node->lhs;
-			node->lhs = node->rhs;
-			node->rhs = tmp;
-		}
-		if((lhs->tp->kind == ARRAY || lhs->tp->kind == PTR) && rhs->tp->kind == INT)
-		{
-			int size = size_of(lhs->tp->ptr_to);
-			Node *mul = new_node(ND_MUL, rhs, new_node_num(size));
-			mul->tp = new_type(INT, NULL);
-			node->rhs = mul;
-			node->tp = lhs->tp;
-			return node;
-		}
-	}
-	node->tp = new_type(INT, NULL);
-	return node;
+static bool integer_type(Type *tp) { return tp && (tp->kind == INT || tp->kind == CHAR); }
+
+Type *decay_type(Type *tp) {
+    return tp && tp->kind == ARRAY ? new_type(PTR, tp->ptr_to) : tp;
 }
 
-Node *new_sub(Node *lhs, Node *rhs)
-{
-	Node *node = new_node(ND_SUB, lhs, rhs);
-	if(lhs->tp && rhs->tp){
-		if ((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && rhs->tp->kind == INT)
-		{
-			int size = size_of(lhs->tp->ptr_to);
-			rhs = new_node(ND_MUL, rhs, new_node_num(size));
-			rhs->tp = new_type(INT, NULL);
-			node->rhs = rhs;
-			node->tp = lhs->tp;
-			return node;
-		}
-		if((lhs->tp->kind == PTR || lhs->tp->kind == ARRAY) && (rhs->tp->kind == PTR || rhs->tp->kind == ARRAY)) {
-			node->tp = new_type(INT, NULL);
-			Node *div = new_node(ND_DIV, node, new_node_num(size_of(lhs->tp->ptr_to)));
-			div->tp = new_type(INT, NULL);
-			return div;
-		}
-	}
-	node->tp = new_type(INT, NULL);
-	return node;
+Node *new_add(Node *lhs, Node *rhs) {
+    Type *lt = decay_type(lhs->tp);
+    Type *rt = decay_type(rhs->tp);
+    Node *node;
+
+    if (integer_type(lt) && rt && rt->kind == PTR)
+        return new_add(rhs, lhs);
+
+    if (lt && lt->kind == PTR && integer_type(rt)) {
+        node = new_node(
+            ND_ADD, lhs,
+            new_node(ND_MUL, rhs,
+                     new_node_num(size_of(lt->ptr_to))));
+        node->tp = lt;
+    } else if (integer_type(lt) && integer_type(rt)) {
+        node = new_node(ND_ADD, lhs, rhs);
+        node->tp = new_type(INT, NULL);
+    } else {
+        error_at(token->str, "Mismatch !!! at new_add()");
+    }
+
+    return node;
+}
+
+Node *new_sub(Node *lhs, Node *rhs) {
+    Type *lt = decay_type(lhs->tp);
+    Type *rt = decay_type(rhs->tp);
+    Node *node;
+
+    if (lt && lt->kind == PTR && integer_type(rt)) {
+        node = new_node(
+            ND_SUB, lhs,
+            new_node(ND_MUL, rhs,
+                     new_node_num(size_of(lt->ptr_to))));
+        node->tp = lt;
+    } else if (integer_type(lt) && integer_type(rt)) {
+        node = new_node(ND_SUB, lhs, rhs);
+        node->tp = new_type(INT, NULL);
+    } else {
+        error_at(token->str, "Mismatch !!! at new_sub()");
+    }
+
+    return node;
 }
 
 Node *add() {
@@ -612,6 +616,8 @@ Node *unary() {
 	{
 		Node *lhs = unary();
 		Node *node = new_node(ND_DEREF, lhs, NULL);
+		if (!lhs->tp || (lhs->tp->kind != PTR && lhs->tp->kind != ARRAY) || lhs->tp->ptr_to->kind == VOID)
+            error_at(op->str, "dereference requires object pointer");
 		node->tp = lhs->tp->ptr_to;
 		return node;
 	}
@@ -621,10 +627,11 @@ Node *unary() {
 		return node;
 	}
 	if(consume("sizeof")) {
-		Node *node = new_node(ND_SIZE, unary(), NULL);
-		node->tp = new_type(INT, NULL);
-		return node;
-	}
+        if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(' && token->next->kind == TK_TYPE) {
+            expect('('); Type *tp = type_name(); expect(')'); return new_node_num(size_of(tp));
+        }
+        Node *operand = unary(); return new_node_num(size_of(operand->tp));
+    }
 	return primary();
 }
 
@@ -719,9 +726,10 @@ Node *primary() {
 		if (consume("[")) {
 			Node *index = expr();
 			expect(']');
-			if (!node->tp || (node->tp->kind != PTR && node->tp->kind != ARRAY))
+			Node *address = new_add(node, index);
+			if (!address->tp || address->tp->kind != PTR)
 				error_at(token->str, "添字には配列かポインタが必要です。");
-			node = new_node(ND_DEREF, new_add(node, index), NULL);
+			node = new_node(ND_DEREF, address, NULL);
 			node->tp = node->lhs->tp->ptr_to;
 			continue;
 		}
@@ -815,9 +823,11 @@ int consume_paramList(Node *node, Type *ty) {
         if(!tok)
 			error_at(token->str, "型が必要です。");
         Type *param_ty = type(tok);
+        tok = NULL;
+        param_ty = declarator(param_ty, &tok);
+        param_ty = decay_type(param_ty);
         if (param_ty->kind == VOID)
             error_at(tok->str, "voidは単独の引数リストでのみ使えます。");
-        tok = consume_ident();
         if (!tok)
             error_at(token->str, "識別子が必要です。");
         check_enum_name(tok);
@@ -825,7 +835,7 @@ int consume_paramList(Node *node, Type *ty) {
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
-        var->offset = local_offset(param_ty, locals ? locals->offset : 0, tok);
+        var->offset = local_offset(param_ty, locals ? locals->offset : 0);
         var->next = locals;
         locals = var;
 

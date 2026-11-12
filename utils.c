@@ -72,6 +72,7 @@ int size_of(Type *tp) {
 	case CHAR:
 		return 1;
     case ARRAY:
+        if (!tp->array_size) error("incomplete array has no size");
         return size_of(tp->ptr_to) * tp->array_size;
     }
 }
@@ -96,13 +97,7 @@ int is_function()
 	while (t->kind == TK_RESERVED && t->str[0] == '*') t = t->next;
 	if (t->kind != TK_IDENT) return false;
 	t = t->next;
-	while (t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '*')
-		t = t->next;
-	// ident
-	if(t->kind != TK_IDENT) return false;
-	t = t->next;
-	// "("
-	return (t->kind == TK_RESERVED && t->str[0] == '(');
+	return t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '(';
 }
 
 char *read_file(char *path) {
@@ -168,3 +163,5 @@ int has_value(Node *node)
 		return 0;
 	}
 }
+
+int align_of(Type *tp) { return tp->kind == ARRAY ? align_of(tp->ptr_to) : size_of(tp); }
