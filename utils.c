@@ -21,7 +21,8 @@ int is_alnum(char c)
 int is_type(char *ident){
     return strcmp(ident, "int") == 0 ||
            strcmp(ident, "char") == 0 ||
-           strcmp(ident, "void") == 0;
+           strcmp(ident, "void") == 0 ||
+           strcmp(ident, "enum") == 0;
 }
 
 int match_token(char *str, char *tgt)
@@ -78,18 +79,25 @@ int size_of(Type *tp) {
 
 int is_function()
 {
-	// func := type ident "(" ...
 	Token *t = token;
-	// type
-	if(t->kind != TK_TYPE) return false;
-	t = t->next;
-	while (t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '*')
+	if (t->kind != TK_TYPE) return false;
+	if (t->len == 4 && !memcmp(t->str, "enum", 4)) {
 		t = t->next;
-	// ident
-	if(t->kind != TK_IDENT) return false;
+		if (t->kind == TK_IDENT) t = t->next;
+		if (t->kind == TK_RESERVED && t->str[0] == '{') {
+			int depth = 1;
+			while (depth && (t = t->next)->kind != TK_EOF) {
+				if (t->kind == TK_RESERVED && t->str[0] == '{') depth++;
+				if (t->kind == TK_RESERVED && t->str[0] == '}') depth--;
+			}
+			if (depth) return false;
+			t = t->next;
+		}
+	} else t = t->next;
+	while (t->kind == TK_RESERVED && t->str[0] == '*') t = t->next;
+	if (t->kind != TK_IDENT) return false;
 	t = t->next;
-	// "("
-	return (t->kind == TK_RESERVED && t->str[0] == '(');
+	return t->kind == TK_RESERVED && t->len == 1 && t->str[0] == '(';
 }
 
 char *read_file(char *path) {
