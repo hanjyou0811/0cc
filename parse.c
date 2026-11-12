@@ -430,51 +430,32 @@ Type *decay_type(Type *tp) {
     return tp && tp->kind == ARRAY ? new_type(PTR, tp->ptr_to) : tp;
 }
 
-static void pointer_element(Type *tp) {
-    if (!tp->ptr_to || tp->ptr_to->kind == VOID || size_of(tp->ptr_to) <= 0)
-        error_at(token->str, "pointer arithmetic requires a complete object type");
-}
-
-bool compatible_type(Type *a, Type *b) {
-    if (!a || !b || a->kind != b->kind) return false;
-    if (a->kind == PTR) return compatible_type(a->ptr_to, b->ptr_to);
-    if (a->kind == ARRAY) return a->array_size == b->array_size && compatible_type(a->ptr_to, b->ptr_to);
-    return true;
-}
-
 Node *new_add(Node *lhs, Node *rhs) {
     Type *lt = decay_type(lhs->tp), *rt = decay_type(rhs->tp);
-    if (integer_type(lt) && rt && rt->kind == PTR) {
-        Node *tmp = lhs; lhs = rhs; rhs = tmp;
-        Type *tt = lt; lt = rt; rt = tt;
-    }
     Node *node;
     if (lt && lt->kind == PTR && integer_type(rt)) {
-        pointer_element(lt);
         node = new_node(ND_ADD, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
         node->tp = lt;
     } else {
         if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to addition");
-        node = new_node(ND_ADD, lhs, rhs); node->tp = new_type(INT, NULL);
+        node = new_node(ND_ADD, lhs, rhs);
+        node->tp = new_type(INT, NULL);
     }
     return node;
 }
 
 Node *new_sub(Node *lhs, Node *rhs) {
     Type *lt = decay_type(lhs->tp), *rt = decay_type(rhs->tp);
-    if (lt && lt->kind == PTR) {
-        pointer_element(lt);
-        if (integer_type(rt)) {
-            Node *node = new_node(ND_SUB, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
-            node->tp = lt; return node;
-        }
-        if (rt && rt->kind == PTR && compatible_type(lt, rt)) {
-            Node *diff = new_node(ND_SUB, lhs, rhs); diff->tp = new_type(INT, NULL);
-            return new_node(ND_DIV, diff, new_node_num(size_of(lt->ptr_to)));
-        }
+    Node *node;
+    if (lt && lt->kind == PTR && integer_type(rt)) {
+        node = new_node(ND_SUB, lhs, new_node(ND_MUL, rhs, new_node_num(size_of(lt->ptr_to))));
+        node->tp = lt;
+    } else {
+        if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to subtraction");
+        node = new_node(ND_SUB, lhs, rhs);
+        node->tp = new_type(INT, NULL);
     }
-    if (!integer_type(lt) || !integer_type(rt)) error_at(token->str, "invalid operands to subtraction");
-    Node *node = new_node(ND_SUB, lhs, rhs); node->tp = new_type(INT, NULL); return node;
+    return node;
 }
 
 Node *add() {

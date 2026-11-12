@@ -208,7 +208,6 @@ Type *declspec(void);
 Type *declarator(Type *base, Token **name);
 Type *type_name(void);
 Type *decay_type(Type *tp);
-bool compatible_type(Type *a, Type *b);
 int is_function();
 int has_value(Node *node);
 char *read_file(char *path);
