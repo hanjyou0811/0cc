@@ -1,17 +1,12 @@
 #include "0cc.h"
-#include <limits.h>
 
 Node *code[100];
 static int loop_depth;
 static Type *return_type;
 static Node *current_function;
 
-static int local_offset(Type *tp, int previous, Token *tok) {
-	if (tp->kind == ARRAY && tp->array_size && tp->array_size > INT_MAX / size_of(tp->ptr_to))
-		error_at(tok->str, "ローカル変数のサイズが大きすぎます。");
+static int local_offset(Type *tp, int previous) {
 	int size = tp->kind == ARRAY && !tp->array_size ? 8 : MAX(size_of(tp), 8);
-	if (size > INT_MAX - 15 - previous)
-		error_at(tok->str, "関数のスタックサイズが大きすぎます。");
 	int offset = previous + size;
 	current_function->stack_size = MAX(current_function->stack_size, (offset + 15) / 16 * 16);
 	return offset;
@@ -280,7 +275,6 @@ static Type *type_suffix(Type *base) {
     int len = 0;
     if (!consume("]")) {
         len = eval_const_expr(assign()); expect(']');
-        if (len <= 0) error_at(token->str, "array size must be positive");
     }
     if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '[')
         error_at(token->str, "multidimensional arrays are not supported yet");
@@ -314,7 +308,7 @@ Node *decl(Type *tp){
 	lvar->name = tok->str;
 	lvar->len = tok->len;
 	lvar->tp = tp;
-	lvar->offset = local_offset(tp, locals ? locals->offset : 0, tok);
+	lvar->offset = local_offset(tp, locals ? locals->offset : 0);
 	lvar->next = locals;
 	locals = lvar;
 
@@ -330,12 +324,9 @@ Node *decl(Type *tp){
 				error_at(tok->str, "配列の初期化には文字配列と文字列が必要です。");
 			if (infer_size) {
 				tp->array_size = rhs->val;
-				lvar->offset = local_offset(tp, lvar->next ? lvar->next->offset : 0, tok);
+				lvar->offset = local_offset(tp, lvar->next ? lvar->next->offset : 0);
 				node->offset = lvar->offset;
 			}
-			// C permits an exact fit without the terminating NUL.
-			if (rhs->val - 1 > tp->array_size)
-				error_at(tok->str, "文字列が配列の初期化サイズを超えています。");
 			node = new_node(ND_ARRAY_INIT, node, rhs);
 		} else {
 			node = new_node(ND_ASSIGN, node, rhs);
@@ -747,7 +738,7 @@ int consume_paramList(Node *node, Type *ty) {
         var->name = tok->str;
         var->len  = tok->len;
         var->tp   = param_ty;
-        var->offset = local_offset(param_ty, locals ? locals->offset : 0, tok);
+        var->offset = local_offset(param_ty, locals ? locals->offset : 0);
         var->next = locals;
         locals = var;
 

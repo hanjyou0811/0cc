@@ -72,7 +72,6 @@ int size_of(Type *tp) {
 		return 1;
     case ARRAY:
         if (!tp->array_size) error("incomplete array has no size");
-        if (tp->array_size > 2147483647 / size_of(tp->ptr_to)) error("object too large");
         return size_of(tp->ptr_to) * tp->array_size;
     }
 }
