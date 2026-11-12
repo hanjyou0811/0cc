@@ -282,25 +282,22 @@ static Type *type_suffix(Type *base) {
         len = eval_const_expr(assign()); expect(']');
         if (len <= 0) error_at(token->str, "array size must be positive");
     }
-    Type *element = type_suffix(base);
-    if (element->kind == VOID || (element->kind == ARRAY && !element->array_size))
+    if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '[')
+        error_at(token->str, "multidimensional arrays are not supported yet");
+    if (base->kind == VOID)
         error_at(token->str, "array element must be complete");
-    Type *tp = new_type(ARRAY, element); tp->array_size = len; return tp;
+    Type *tp = new_type(ARRAY, base); tp->array_size = len; return tp;
 }
 static Type *parse_declarator(Type *base, Token **name, bool abstract) {
     while (consume("*")) base = new_type(PTR, base);
-    if (consume("(")) {
-        Token *start = token;
-        Type dummy = {0};
-        parse_declarator(&dummy, name, abstract); expect(')');
-        base = type_suffix(base);
-        Token *end = token;
-        token = start;
-        Type *result = parse_declarator(base, name, abstract); expect(')');
-        token = end; return result;
+    if (token->kind == TK_RESERVED && token->len == 1 && token->str[0] == '(')
+        error_at(token->str, "parenthesized declarators are not supported yet");
+    if (!abstract) {
+        *name = consume_ident();
+        if (!*name) error_at(token->str, "identifier required");
+    } else if (token->kind == TK_IDENT) {
+        error_at(token->str, "type name cannot contain an identifier");
     }
-    if (token->kind == TK_IDENT) *name = consume_ident();
-    else if (!abstract) error_at(token->str, "identifier required");
     return type_suffix(base);
 }
 Type *declarator(Type *base, Token **name) { return parse_declarator(base, name, false); }
